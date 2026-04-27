@@ -12,6 +12,8 @@ venv/
 
 # Output (generated artifacts) — regenerated each run
 output/
+# UI job runs
+output/_ui_jobs/
 
 # Note: deploy/ IS committed because GitHub Pages serves it directly.
 # It is a snapshot of the latest successful generation.

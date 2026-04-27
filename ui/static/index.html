@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Автономный генератор приложений</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-pill">Альфа Будущее</span>
+      <h1>Автономный генератор</h1>
+    </div>
+    <div class="health" id="health">…</div>
+  </header>
+
+  <main class="layout">
+    <!-- LEFT: input panel -->
+    <section class="panel input-panel">
+      <h2>Вход</h2>
+
+      <label class="field">
+        <span class="label-text">📋 Шаблон задания</span>
+        <select id="preset-select">
+          <option value="">— своё задание —</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span class="label-text">🎯 Бизнес-требования (БТ) <em>required</em></span>
+        <textarea id="bt" rows="8" placeholder="| ID | Требование | Обязательность |&#10;|----|-----------|---------------|&#10;| БТ-01 | ... | Обязательное |"></textarea>
+      </label>
+
+      <label class="field">
+        <span class="label-text">🔄 Бизнес-процесс (БП) <em>required</em></span>
+        <textarea id="bp" rows="8" placeholder="Актор: Пользователь&#10;&#10;Основной поток:&#10;1. ...&#10;2. ..."></textarea>
+      </label>
+
+      <label class="field">
+        <span class="label-text">✨ Features (опционально)</span>
+        <textarea id="features" rows="5" placeholder="- Тёмная тема&#10;- Все надписи на русском&#10;- ..."></textarea>
+      </label>
+
+      <fieldset class="field options">
+        <legend class="label-text">⚙️ Опции пайплайна</legend>
+        <label><input type="checkbox" id="opt-skip-uc"> Пропустить юз-кейсы</label>
+        <label><input type="checkbox" id="opt-skip-tests"> Пропустить тесты</label>
+      </fieldset>
+
+      <button id="generate-btn" class="primary-btn">⚡ Сгенерировать</button>
+      <p class="hint">Полный прогон ~4–5 минут · ~$0.09 за один</p>
+    </section>
+
+    <!-- RIGHT: progress + output -->
+    <section class="panel output-panel">
+      <div class="progress-block">
+        <h2>Прогресс</h2>
+        <ol id="steps" class="steps">
+          <li data-step="use_cases"><span class="dot" data-num="1"></span><span class="step-label">Юз-кейсы</span><span class="step-status"></span></li>
+          <li data-step="nfr"><span class="dot" data-num="2"></span><span class="step-label">НФТ</span><span class="step-status"></span></li>
+          <li data-step="fr"><span class="dot" data-num="3"></span><span class="step-label">ФТ</span><span class="step-status"></span></li>
+          <li data-step="code"><span class="dot" data-num="4"></span><span class="step-label">Код</span><span class="step-status"></span></li>
+          <li data-step="tests"><span class="dot" data-num="5"></span><span class="step-label">Тесты</span><span class="step-status"></span></li>
+          <li data-step="readme"><span class="dot" data-num="6"></span><span class="step-label">README</span><span class="step-status"></span></li>
+        </ol>
+        <div class="meta" id="meta"></div>
+      </div>
+
+      <div class="files-block">
+        <div class="files-header">
+          <h2>Сгенерированные файлы</h2>
+          <button id="download-btn" class="secondary-btn" disabled>Скачать ZIP</button>
+        </div>
+        <div class="files-layout">
+          <ul id="file-tree" class="file-tree"></ul>
+          <pre id="file-content" class="file-content"><code>← выбери файл слева</code></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <code>python -m ui</code> · Gemini 2.5 Flash + Pro · cascade БТ → ФТ → код → тесты → README
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
