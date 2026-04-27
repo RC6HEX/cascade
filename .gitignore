@@ -1,0 +1,27 @@
+# Secrets
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Output (generated artifacts) — regenerated each run
+output/
+
+# Note: deploy/ IS committed because GitHub Pages serves it directly.
+# It is a snapshot of the latest successful generation.
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store

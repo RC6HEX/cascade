@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Автономная команда — демки</title>
+  <style>
+    :root {
+      --bg: #0f0f10;
+      --fg: #f5f5f5;
+      --muted: #9aa0a6;
+      --card: #1a1a1d;
+      --border: #2a2a2f;
+      --accent: #ef3124;
+      --accent-2: #c2ff3a;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      padding: 48px 24px;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    .header { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+    .pill {
+      background: var(--accent-2);
+      color: #000;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    h1 { font-size: 36px; margin: 0; }
+    p.lead { color: var(--muted); font-size: 16px; max-width: 720px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-top: 32px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    .card:hover { transform: translateY(-2px); border-color: var(--accent); }
+    .card .num {
+      display: inline-block;
+      background: var(--accent-2);
+      color: #000;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      font-weight: 700;
+      text-align: center;
+      line-height: 28px;
+      margin-bottom: 12px;
+    }
+    .card h2 { margin: 0 0 8px; font-size: 20px; }
+    .card .desc { color: var(--muted); font-size: 14px; min-height: 60px; }
+    .card .btn {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      margin-top: 12px;
+      margin-right: 8px;
+      font-size: 14px;
+    }
+    .card .btn.secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--fg);
+    }
+    .card .btn:hover { opacity: 0.9; }
+
+    footer {
+      margin-top: 64px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    code {
+      background: #000;
+      color: var(--accent-2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <span class="pill">Альфа Будущее</span>
+      <span style="color: var(--muted); font-size: 14px;">Автономная команда разработки ПО</span>
+    </div>
+    <h1>Генератор приложений по бизнес-требованиям</h1>
+    <p class="lead">
+      Каждая из этих демок сгенерирована автоматически из БТ + БП + Features.
+      Генератор сам построил юз-кейсы, НФТ, ФТ, исходный код и тесты.
+      Никакого ручного кода в <code>output/</code>.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <div class="num">A</div>
+        <h2>QuickCalc</h2>
+        <div class="desc">
+          Веб-калькулятор. Базовые операции, обработка деления на ноль,
+          история последних 10 вычислений, ввод с клавиатуры.
+        </div>
+        <a class="btn" href="task_a/src/index.html">Запустить</a>
+        <a class="btn secondary" href="task_a/docs/functional-req.md">ФТ</a>
+      </div>
+
+      <div class="card">
+        <div class="num">B</div>
+        <h2>TaskBoard</h2>
+        <div class="desc">
+          Канбан таск-трекер. Создание задач, drag-and-drop между статусами,
+          фильтры, сохранение в localStorage.
+        </div>
+        <a class="btn" href="task_b/src/index.html">Запустить</a>
+        <a class="btn secondary" href="task_b/docs/functional-req.md">ФТ</a>
+      </div>
+
+      <div class="card">
+        <div class="num">C</div>
+        <h2>CurrencyX</h2>
+        <div class="desc">
+          Конвертер валют с курсами из открытого API. 12 валют, кеш в localStorage,
+          fallback при недоступности API.
+        </div>
+        <a class="btn" href="task_c/src/index.html">Запустить</a>
+        <a class="btn secondary" href="task_c/docs/functional-req.md">ФТ</a>
+      </div>
+    </div>
+
+    <footer>
+      Все три демки сгенерированы одним и тем же генератором (Python + Gemini API).
+      Команда: <code>python -m generator --task task_X</code>
+    </footer>
+  </div>
+</body>
+</html>

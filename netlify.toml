@@ -1,0 +1,8 @@
+[build]
+  publish = "deploy"
+  command = "echo 'Static deploy — files already in deploy/'"
+
+[[redirects]]
+  from = "/"
+  to = "/index.html"
+  status = 200
