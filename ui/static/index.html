@@ -30,6 +30,7 @@
       </div>
     </div>
     <div class="topbar-actions">
+      <button id="history-btn" class="icon-btn" title="История генераций" aria-label="История">⏱</button>
       <button id="settings-btn" class="icon-btn" title="Настройки моделей" aria-label="Настройки">⚙</button>
       <div class="health" id="health">…</div>
     </div>
@@ -93,7 +94,11 @@
       <div class="files-block">
         <div class="files-header">
           <h2>Сгенерированные файлы</h2>
-          <button id="download-btn" class="secondary-btn" disabled>Скачать ZIP</button>
+          <div class="files-actions">
+            <button id="preview-btn" class="secondary-btn" disabled>▶ Запустить</button>
+            <button id="trace-btn" class="secondary-btn" disabled>🔗 Трассировка</button>
+            <button id="download-btn" class="secondary-btn" disabled>Скачать ZIP</button>
+          </div>
         </div>
         <div class="files-layout">
           <ul id="file-tree" class="file-tree"></ul>
@@ -164,6 +169,47 @@
       </div>
     </div>
   </div>
+
+  <!-- Live app preview modal -->
+  <div id="preview-modal" class="modal modal-large" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-card">
+      <header class="modal-head">
+        <h3>▶ Запущенное приложение</h3>
+        <div class="modal-actions-inline">
+          <button class="secondary-btn" id="preview-reload">↻ Reload</button>
+          <button class="secondary-btn" id="preview-open" title="Открыть в новой вкладке">↗ В новой вкладке</button>
+          <button class="icon-btn" id="preview-close" aria-label="Закрыть">×</button>
+        </div>
+      </header>
+      <div class="modal-body modal-body-flat">
+        <iframe id="preview-frame" title="Сгенерированное приложение" sandbox="allow-scripts allow-same-origin allow-forms allow-modals"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <!-- Traceability matrix modal -->
+  <div id="trace-modal" class="modal modal-large" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-card">
+      <header class="modal-head">
+        <h3>🔗 Матрица трассировки</h3>
+        <button class="icon-btn" id="trace-close" aria-label="Закрыть">×</button>
+      </header>
+      <div class="modal-body" id="trace-body">
+        <div class="loading">Загрузка...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- History sidebar -->
+  <aside id="history-panel" class="history-panel" hidden>
+    <header class="history-head">
+      <h3>История генераций</h3>
+      <button class="icon-btn" id="history-close" aria-label="Закрыть">×</button>
+    </header>
+    <ul id="history-list" class="history-list"></ul>
+  </aside>
 
   <!-- Refinement panel (shown after a successful generation) -->
   <div id="refine-panel" class="refine-panel" hidden>

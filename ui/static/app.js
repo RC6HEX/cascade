@@ -37,6 +37,22 @@ const els = {
   refinePanel: $('refine-panel'),
   refineComment: $('refine-comment'),
   refineApply: $('refine-apply'),
+
+  // wave 3
+  previewBtn: $('preview-btn'),
+  traceBtn: $('trace-btn'),
+  historyBtn: $('history-btn'),
+  previewModal: $('preview-modal'),
+  previewFrame: $('preview-frame'),
+  previewClose: $('preview-close'),
+  previewReload: $('preview-reload'),
+  previewOpen: $('preview-open'),
+  traceModal: $('trace-modal'),
+  traceClose: $('trace-close'),
+  traceBody: $('trace-body'),
+  historyPanel: $('history-panel'),
+  historyClose: $('history-close'),
+  historyList: $('history-list'),
 };
 
 let activeJobId = null;
@@ -58,6 +74,12 @@ const LS_KEY = 'cascade.modelChoice';
   els.generate.addEventListener('click', onGenerate);
   els.download.addEventListener('click', onDownload);
 
+  // Live cost estimate while user types
+  for (const id of ['bt', 'bp', 'features']) {
+    document.getElementById(id).addEventListener('input', updateCostEstimate);
+  }
+  updateCostEstimate();
+
   els.settingsBtn.addEventListener('click', openSettings);
   els.settingsClose.addEventListener('click', closeSettings);
   els.settingsModal.querySelector('.modal-backdrop').addEventListener('click', closeSettings);
@@ -70,6 +92,24 @@ const LS_KEY = 'cascade.modelChoice';
   if (els.refineComment) els.refineComment.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onRefineApply(); }
   });
+
+  // Wave 3 wiring
+  els.previewBtn.addEventListener('click', openPreview);
+  els.previewClose.addEventListener('click', closePreview);
+  els.previewReload.addEventListener('click', () => {
+    if (els.previewFrame.src) els.previewFrame.src = els.previewFrame.src;
+  });
+  els.previewOpen.addEventListener('click', () => {
+    if (activeJobId) window.open(`/api/jobs/${activeJobId}/app/src/index.html`, '_blank');
+  });
+  els.previewModal.querySelector('.modal-backdrop').addEventListener('click', closePreview);
+
+  els.traceBtn.addEventListener('click', openTraceability);
+  els.traceClose.addEventListener('click', () => { els.traceModal.hidden = true; });
+  els.traceModal.querySelector('.modal-backdrop').addEventListener('click', () => { els.traceModal.hidden = true; });
+
+  els.historyBtn.addEventListener('click', toggleHistory);
+  els.historyClose.addEventListener('click', () => { els.historyPanel.hidden = true; });
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !els.settingsModal.hidden) closeSettings();
@@ -211,6 +251,7 @@ function saveSettings() {
   }
   persistModelChoice();
   closeSettings();
+  updateCostEstimate();
 }
 
 function resetModelChoice() {
@@ -237,6 +278,38 @@ async function onPresetChange() {
   els.bt.value = p.business_requirements;
   els.bp.value = p.business_process;
   els.features.value = p.features || '';
+  updateCostEstimate();
+}
+
+function updateCostEstimate() {
+  if (!els.costHint || !modelsCache) return;
+  const totalChars = (els.bt.value.length + els.bp.value.length + els.features.value.length);
+  // Rough: 1 token ≈ 3 chars for Russian. Pipeline overhead: each step inflates input by ~3x
+  // (system prompt + previous artifacts as context). Total input ≈ totalChars * 12 / 3 = 4x.
+  const inputTokens = Math.round(totalChars * 4);
+  // Output is roughly 80% of input across 6 steps
+  const outputTokens = Math.round(inputTokens * 0.8);
+
+  const fastId = userModelChoice.fast || modelsCache.default_fast;
+  const smartId = userModelChoice.smart || modelsCache.default_smart;
+  const fast = modelsCache.models.find(m => m.id === fastId);
+  const smart = modelsCache.models.find(m => m.id === smartId);
+  if (!fast || !smart) {
+    els.costHint.textContent = `~${(inputTokens / 1000).toFixed(1)}K in / ~${(outputTokens / 1000).toFixed(1)}K out`;
+    return;
+  }
+
+  // Fast handles ~70% of calls (use_cases, nfr, tests, readme), smart ~30% (fr, code)
+  const fastIn = inputTokens * 0.4;
+  const smartIn = inputTokens * 0.6;
+  const fastOut = outputTokens * 0.5;
+  const smartOut = outputTokens * 0.5;
+  const cost = (
+    fastIn * fast.price_in / 1e6 + fastOut * fast.price_out / 1e6 +
+    smartIn * smart.price_in / 1e6 + smartOut * smart.price_out / 1e6
+  );
+
+  els.costHint.innerHTML = `Прогон ~3–5 мин · оценка ~$${cost.toFixed(3)} (${(inputTokens / 1000).toFixed(1)}K in / ${(outputTokens / 1000).toFixed(1)}K out)`;
 }
 
 // ---------- generation flow ----------
@@ -449,13 +522,148 @@ async function finishJob(jobId, isError = false) {
   els.generate.textContent = 'Сгенерировать';
   if (isError) return;
   els.download.disabled = false;
+  els.previewBtn.disabled = false;
+  els.traceBtn.disabled = false;
   await loadFiles(jobId);
   // Show refinement panel
   if (els.refinePanel) {
     els.refinePanel.hidden = false;
     els.refineComment.value = '';
-    els.refineComment.focus();
   }
+}
+
+// ---------- Wave 3: preview / traceability / history ----------
+
+function openPreview() {
+  if (!activeJobId) return;
+  els.previewFrame.src = `/api/jobs/${activeJobId}/app/src/index.html`;
+  els.previewModal.hidden = false;
+}
+function closePreview() {
+  els.previewModal.hidden = true;
+  els.previewFrame.src = 'about:blank';
+}
+
+async function openTraceability() {
+  if (!activeJobId) return;
+  els.traceBody.innerHTML = '<div class="loading">Загрузка матрицы...</div>';
+  els.traceModal.hidden = false;
+  try {
+    const r = await fetch(`/api/jobs/${activeJobId}/traceability`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    renderTraceability(data);
+  } catch (e) {
+    els.traceBody.innerHTML = `<div class="loading" style="color: var(--danger)">Ошибка: ${escapeHtml(String(e))}</div>`;
+  }
+}
+
+function renderTraceability(data) {
+  const t = data.totals;
+  const fr_ok_pct = t.fr_total ? Math.round(100 * t.fr_implemented / t.fr_total) : 0;
+
+  let html = `
+    <div class="trace-summary">
+      <div class="stat"><b>${t.bt_total}</b><span>БТ всего</span></div>
+      <div class="stat"><b>${t.bt_required}</b><span>обязательных</span></div>
+      <div class="stat"><b>${t.uc_total}</b><span>юз-кейсов</span></div>
+      <div class="stat"><b>${t.fr_total}</b><span>ФТ</span></div>
+      <div class="stat ${fr_ok_pct === 100 ? 'ok' : 'warn'}"><b>${t.fr_implemented}/${t.fr_total}</b><span>ФТ → @implements (${fr_ok_pct}%)</span></div>
+    </div>
+
+    <h4 class="trace-h">БТ → юз-кейсы → ФТ</h4>
+    <table class="trace-table">
+      <thead><tr><th>БТ</th><th>обяз.</th><th>UC</th><th>ФТ</th></tr></thead>
+      <tbody>
+        ${data.bt_rows.map(r => `
+          <tr class="${r.ucs.length === 0 && r.frs.length === 0 ? 'row-empty' : ''}">
+            <td><code>${r.bt}</code></td>
+            <td>${r.required ? '<span class="pill required">обяз.</span>' : '<span class="pill">опц.</span>'}</td>
+            <td>${r.ucs.map(u => `<code>${u}</code>`).join(' ') || '<span class="muted">—</span>'}</td>
+            <td>${r.frs.map(f => `<code>${f}</code>`).join(' ') || '<span class="muted muted-warn">— нет ФТ</span>'}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+
+    <h4 class="trace-h">ФТ → файлы (через @implements)</h4>
+    <table class="trace-table">
+      <thead><tr><th>ФТ</th><th>статус</th><th>файлы</th></tr></thead>
+      <tbody>
+        ${data.fr_rows.map(r => `
+          <tr>
+            <td><code>${r.fr}</code></td>
+            <td>${r.implemented
+              ? '<span class="pill ok">✓ implements</span>'
+              : '<span class="pill warn">⚠ missing</span>'}</td>
+            <td>${r.files.map(f => `<code>${escapeHtml(f)}</code>`).join(' ') || '<span class="muted muted-warn">не найдено</span>'}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+  els.traceBody.innerHTML = html;
+}
+
+async function toggleHistory() {
+  if (!els.historyPanel.hidden) {
+    els.historyPanel.hidden = true;
+    return;
+  }
+  els.historyList.innerHTML = '<li class="loading">Загрузка...</li>';
+  els.historyPanel.hidden = false;
+  try {
+    const r = await fetch('/api/jobs');
+    const items = await r.json();
+    if (!items.length) {
+      els.historyList.innerHTML = '<li class="empty">Нет сохранённых генераций.</li>';
+      return;
+    }
+    els.historyList.innerHTML = items.map(item => `
+      <li data-id="${item.id}" class="history-item ${item.status}">
+        <div class="hi-main">
+          <span class="hi-status ${item.status}"></span>
+          <span class="hi-task">${escapeHtml(item.task)}</span>
+          <span class="hi-files">${item.files_count || 0} файлов</span>
+        </div>
+        <div class="hi-actions">
+          <button data-action="open" class="hi-btn">Открыть</button>
+          <button data-action="delete" class="hi-btn hi-btn-danger">×</button>
+        </div>
+      </li>
+    `).join('');
+    els.historyList.querySelectorAll('.history-item').forEach(li => {
+      li.querySelector('[data-action="open"]').addEventListener('click', () => loadHistoryJob(li.dataset.id));
+      li.querySelector('[data-action="delete"]').addEventListener('click', () => deleteHistoryJob(li.dataset.id));
+    });
+  } catch (e) {
+    els.historyList.innerHTML = `<li class="empty">Ошибка: ${escapeHtml(String(e))}</li>`;
+  }
+}
+
+async function loadHistoryJob(jobId) {
+  resetUI();
+  activeJobId = jobId;
+  els.historyPanel.hidden = true;
+  els.download.disabled = false;
+  els.previewBtn.disabled = false;
+  els.traceBtn.disabled = false;
+  // Replay events from saved history
+  try {
+    const r = await fetch(`/api/jobs/${jobId}`);
+    const job = await r.json();
+    for (const ev of (job.events || [])) {
+      if (ev.type === 'start') setMeta({ 'Задача': ev.task, 'Провайдер': ev.provider, 'Шагов': ev.total });
+      if (ev.type === 'step_done') markStep(ev.step, 'done');
+      if (ev.type === 'self_check_fail') markStep(ev.step, 'warning', 'missing');
+    }
+    if (els.refinePanel) els.refinePanel.hidden = false;
+  } catch {}
+  await loadFiles(jobId);
+}
+
+async function deleteHistoryJob(jobId) {
+  if (!confirm('Удалить эту генерацию со всеми файлами?')) return;
+  await fetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
+  await toggleHistory(); await toggleHistory();  // refresh
 }
 
 function fileIcon(path) {
