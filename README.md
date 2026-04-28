@@ -13,7 +13,7 @@ Use Cases  →  НФТ  →  ФТ  →  Код  →  Тесты  →  README
 
 ---
 
-## Быстрый старт (3 команды)
+## Быстрый старт (Linux/MacOs/Windows)
 
 ```bash
 git clone https://github.com/RC6HEX/cascade.git
