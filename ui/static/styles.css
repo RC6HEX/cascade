@@ -271,8 +271,8 @@ select:focus, textarea:focus, input:focus {
   color: var(--muted);
 }
 .options label {
-  display: flex; align-items: center; gap: 10px;
-  margin: 6px 0; font-size: 13px; cursor: pointer;
+  display: flex; align-items: flex-start; gap: 10px;
+  margin: 8px 0; font-size: 13px; cursor: pointer;
   color: var(--fg-2);
   user-select: none;
 }
@@ -281,6 +281,15 @@ select:focus, textarea:focus, input:focus {
   accent-color: var(--accent);
   width: 16px; height: 16px;
   cursor: pointer;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.options label small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+  font-weight: 400;
 }
 
 .primary-btn {
@@ -437,6 +446,35 @@ select:focus, textarea:focus, input:focus {
 
 .steps li.skipped { opacity: 0.4; }
 .steps li.skipped .dot { background: var(--bg-elev-3); }
+
+/* Self-check re-running state — yellow pulse */
+.steps li.rechecking {
+  border-color: var(--warning);
+  background: linear-gradient(180deg, rgba(255, 170, 0, 0.10) 0%, var(--bg-elev-1) 100%);
+  box-shadow: 0 0 0 1px rgba(255, 170, 0, 0.4), 0 8px 32px rgba(255, 170, 0, 0.15);
+}
+.steps li.rechecking .dot {
+  background: var(--warning);
+  border-color: var(--warning);
+  color: #000;
+  animation: pulse-warning 1.6s ease-in-out infinite;
+}
+.steps li.rechecking .step-label,
+.steps li.rechecking .step-status { color: var(--warning); }
+
+@keyframes pulse-warning {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 170, 0, 0.45); }
+  50% { box-shadow: 0 0 0 8px transparent; }
+}
+
+.steps li.warning .dot {
+  background: var(--warning);
+  border-color: var(--warning);
+  color: #000;
+}
+.steps li.warning .dot::before { content: '!'; font-size: 13px; font-weight: 800; }
+.steps li.warning .step-label,
+.steps li.warning .step-status { color: var(--warning); }
 
 @keyframes pulse-accent {
   0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }

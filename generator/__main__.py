@@ -56,6 +56,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Skip tests generation",
     )
     parser.add_argument(
+        "--no-self-check",
+        action="store_true",
+        help="Disable self-check loops (faster but no traceability validation)",
+    )
+    parser.add_argument(
+        "--check-retries",
+        type=int,
+        default=2,
+        help="Max self-check retries per step (default: 2)",
+    )
+    parser.add_argument(
         "--provider",
         choices=("gemini", "openrouter"),
         help="Override LLM provider (otherwise from .env)",
@@ -116,6 +127,8 @@ def main(argv: list[str] | None = None) -> int:
             skip_use_cases=args.no_use_cases,
             skip_tests=args.no_tests,
             model_overrides=overrides or None,
+            self_check=not args.no_self_check,
+            max_check_retries=args.check_retries,
         )
     except Exception as e:
         log.exception("Pipeline failed: %s", e)

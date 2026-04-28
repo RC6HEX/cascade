@@ -80,9 +80,16 @@ class LLMClient:
         user: str,
         temperature: float = 0.4,
         max_output_tokens: int = 8192,
-        retries: int = 3,
+        retries: int = 4,
     ) -> str:
-        """Generate a completion. Returns raw text."""
+        """Generate a completion. Returns raw text.
+
+        Retry strategy:
+            - Network/timeout errors: exponential backoff (2, 4, 8, 16s)
+            - HTTP 429 (rate limit): longer wait (15, 30, 60, 120s)
+            - HTTP 5xx: medium wait (5, 10, 20, 40s)
+            - Empty content: same as network error
+        """
         last_err: Optional[Exception] = None
         for attempt in range(1, retries + 1):
             try:
@@ -109,13 +116,26 @@ class LLMClient:
                 return text
             except (httpx.HTTPError, httpx.HTTPStatusError, RuntimeError) as e:
                 last_err = e
-                wait = 2**attempt
+                wait = self._compute_backoff(e, attempt)
                 log.warning(
                     "LLM call failed (step=%s, attempt=%d/%d): %s. Retrying in %ds",
                     step, attempt, retries, e, wait,
                 )
                 time.sleep(wait)
         raise RuntimeError(f"LLM call failed after {retries} retries: {last_err}")
+
+    @staticmethod
+    def _compute_backoff(err: Exception, attempt: int) -> int:
+        """Pick backoff duration based on error type. attempt is 1-indexed."""
+        msg = str(err)
+        # Rate limit — wait long
+        if "HTTP 429" in msg or "rate limit" in msg.lower() or "rate-limit" in msg.lower():
+            return min(15 * (2 ** (attempt - 1)), 120)
+        # Server error — medium wait
+        if any(f"HTTP 5{c}" in msg for c in ("00", "02", "03", "04", "20")):
+            return min(5 * (2 ** (attempt - 1)), 40)
+        # Default — exponential backoff
+        return min(2 ** attempt, 16)
 
     # ---- providers ----
     def _call_gemini(

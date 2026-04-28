@@ -10,6 +10,7 @@ const els = {
   features: $('features'),
   skipUC: $('opt-skip-uc'),
   skipTests: $('opt-skip-tests'),
+  selfCheck: $('opt-self-check'),
   generate: $('generate-btn'),
   download: $('download-btn'),
   steps: document.querySelectorAll('#steps li'),
@@ -218,6 +219,7 @@ async function onGenerate() {
     features: features || null,
     skip_use_cases: els.skipUC.checked,
     skip_tests: els.skipTests.checked,
+    self_check: els.selfCheck ? els.selfCheck.checked : true,
   };
   if (userModelChoice.fast) payload.model_fast = userModelChoice.fast;
   if (userModelChoice.smart) payload.model_smart = userModelChoice.smart;
@@ -285,6 +287,33 @@ function attachStream(jobId) {
     const d = JSON.parse(e.data);
     const elapsed = stepStart ? ((Date.now() - stepStart) / 1000).toFixed(1) : '';
     markStep(d.step, 'done', elapsed ? `${elapsed}s` : '');
+  });
+
+  // Self-check events: visual hint that the step is being re-run
+  es.addEventListener('self_check_retry', (e) => {
+    const d = JSON.parse(e.data);
+    const li = document.querySelector(`#steps li[data-step="${d.step}"]`);
+    if (!li) return;
+    li.classList.add('rechecking');
+    const status = li.querySelector('.step-status');
+    status.textContent = `↻ ${d.attempt}: ${(d.missing || []).slice(0,3).join(', ')}`;
+  });
+
+  es.addEventListener('self_check_pass', (e) => {
+    const d = JSON.parse(e.data);
+    const li = document.querySelector(`#steps li[data-step="${d.step}"]`);
+    if (!li) return;
+    li.classList.remove('rechecking');
+  });
+
+  es.addEventListener('self_check_fail', (e) => {
+    const d = JSON.parse(e.data);
+    const li = document.querySelector(`#steps li[data-step="${d.step}"]`);
+    if (!li) return;
+    li.classList.remove('rechecking');
+    li.classList.add('warning');
+    const status = li.querySelector('.step-status');
+    status.textContent = `⚠ missing: ${(d.missing || []).slice(0,2).join(',')}`;
   });
 
   es.addEventListener('done', (e) => {

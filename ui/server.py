@@ -87,6 +87,7 @@ class GenerateRequest(BaseModel):
     features: Optional[str] = None
     skip_use_cases: bool = False
     skip_tests: bool = False
+    self_check: bool = True
     # Live model overrides — let the user pick from UI dropdowns
     model_fast: Optional[str] = None
     model_smart: Optional[str] = None
@@ -179,7 +180,8 @@ async def create_job(req: GenerateRequest) -> JSONResponse:
 
     threading.Thread(
         target=_run_job_thread,
-        args=(job, cfg, input_dir, output_dir, req.skip_use_cases, req.skip_tests, overrides),
+        args=(job, cfg, input_dir, output_dir, req.skip_use_cases, req.skip_tests,
+              overrides, req.self_check),
         daemon=True,
     ).start()
 
@@ -194,6 +196,7 @@ def _run_job_thread(
     skip_use_cases: bool,
     skip_tests: bool,
     model_overrides: Optional[dict[str, str]] = None,
+    self_check: bool = True,
 ) -> None:
     """Run pipeline in a background thread, push events into the job's queue."""
     job.status = "running"
@@ -216,6 +219,7 @@ def _run_job_thread(
             skip_tests=skip_tests,
             on_event=push,
             model_overrides=model_overrides or None,
+            self_check=self_check,
         )
         job.status = "done"
     except Exception as e:

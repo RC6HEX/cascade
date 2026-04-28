@@ -9,6 +9,12 @@ from .config import STEP_MODELS, Config
 from .io_utils import TaskInput, clean_output, load_task, write_files, write_text
 from .llm import LLMClient
 from .parser import parse_files_strict
+from .validators import (
+    ValidationReport,
+    validate_code,
+    validate_fr,
+    validate_use_cases,
+)
 
 ProgressCallback = Callable[[dict[str, Any]], None]
 
@@ -58,11 +64,26 @@ def _strip_code_fences(text: str) -> str:
 
 # ---------- individual steps ----------
 
+def _with_feedback(user: str, feedback: str) -> str:
+    """Append feedback to the user prompt for a retry pass."""
+    if not feedback:
+        return user
+    return user + (
+        "\n\n---\n\n"
+        "## ВНИМАНИЕ: предыдущий ответ был неполным\n"
+        f"{feedback}\n"
+        "Верни обновлённую версию файла целиком, ничего не пропускай. "
+        "Сохрани всё что было хорошо, добавь недостающее."
+    )
+
+
 def step_use_cases(
-    client: LLMClient, task: TaskInput, overrides: Optional[dict[str, str]] = None
+    client: LLMClient, task: TaskInput,
+    overrides: Optional[dict[str, str]] = None,
+    feedback: str = "",
 ) -> str:
     system, user_tpl = _load_prompt("use_cases")
-    user = user_tpl.replace("{context}", task.as_context())
+    user = _with_feedback(user_tpl.replace("{context}", task.as_context()), feedback)
     text = client.generate(
         step="use_cases",
         model=_resolve_model(client.cfg, "use_cases", overrides),
@@ -75,10 +96,12 @@ def step_use_cases(
 
 
 def step_nfr(
-    client: LLMClient, task: TaskInput, overrides: Optional[dict[str, str]] = None
+    client: LLMClient, task: TaskInput,
+    overrides: Optional[dict[str, str]] = None,
+    feedback: str = "",
 ) -> str:
     system, user_tpl = _load_prompt("nfr")
-    user = user_tpl.replace("{context}", task.as_context())
+    user = _with_feedback(user_tpl.replace("{context}", task.as_context()), feedback)
     text = client.generate(
         step="nfr",
         model=_resolve_model(client.cfg, "nfr", overrides),
@@ -93,6 +116,7 @@ def step_nfr(
 def step_fr(
     client: LLMClient, task: TaskInput, use_cases: str, nfr: str,
     overrides: Optional[dict[str, str]] = None,
+    feedback: str = "",
 ) -> str:
     system, user_tpl = _load_prompt("fr")
     user = (
@@ -101,6 +125,7 @@ def step_fr(
         .replace("{use_cases}", use_cases)
         .replace("{nfr}", nfr)
     )
+    user = _with_feedback(user, feedback)
     text = client.generate(
         step="fr",
         model=_resolve_model(client.cfg, "fr", overrides),
@@ -119,6 +144,7 @@ def step_code(
     nfr: str,
     fr: str,
     overrides: Optional[dict[str, str]] = None,
+    feedback: str = "",
 ) -> dict[str, str]:
     system, user_tpl = _load_prompt("code")
     user = (
@@ -128,6 +154,7 @@ def step_code(
         .replace("{nfr}", nfr)
         .replace("{fr}", fr)
     )
+    user = _with_feedback(user, feedback)
     text = client.generate(
         step="code",
         model=_resolve_model(client.cfg, "code", overrides),
@@ -213,6 +240,8 @@ def run_pipeline(
     skip_tests: bool = False,
     on_event: Optional[ProgressCallback] = None,
     model_overrides: Optional[dict[str, str]] = None,
+    self_check: bool = True,
+    max_check_retries: int = 2,
 ) -> dict[str, object]:
     """Run the full cascade. Returns a small report dict.
 
@@ -222,6 +251,10 @@ def run_pipeline(
     model_overrides: optional per-tier or per-step model overrides, e.g.
         {"fast": "qwen/qwen-2.5-7b-instruct", "smart": "deepseek/deepseek-chat-v3-0324"}
         or {"code": "anthropic/claude-3.5-haiku"} for fine-grained control.
+
+    self_check: if True (default), validates ФТ coverage of БТ and code coverage of ФТ
+        after generation. If validation fails, re-prompts the LLM up to `max_check_retries`
+        times with the missing items as feedback. This significantly improves traceability.
     """
 
     def emit(event_type: str, **payload: Any) -> None:
@@ -254,33 +287,76 @@ def run_pipeline(
         log.info("[%d/%d] Generating %s ...", step_index, total_steps, name)
         return step_index
 
+    self_check_log: list[dict] = []  # used in _generator_log.md
+
+    def _retry_with_check(name: str, gen_fn, validate_fn) -> any:
+        """Run gen_fn with validate-then-retry loop. Returns the final result."""
+        feedback = ""
+        result = None
+        for attempt in range(max_check_retries + 1):
+            result = gen_fn(feedback)
+            if not self_check:
+                return result
+            report: ValidationReport = validate_fn(result)
+            if report.ok:
+                if attempt > 0:
+                    log.info("    [%s] self-check ok after retry %d", name, attempt)
+                    self_check_log.append({"step": name, "result": "passed_after_retry", "attempts": attempt + 1})
+                    emit("self_check_pass", step=name, attempt=attempt + 1)
+                else:
+                    self_check_log.append({"step": name, "result": "passed_first_try"})
+                return result
+            log.warning("    [%s] self-check failed (attempt %d/%d): missing %s",
+                        name, attempt + 1, max_check_retries + 1, report.missing)
+            emit("self_check_retry", step=name, attempt=attempt + 1,
+                 missing=report.missing[:10])
+            feedback = report.feedback
+        # Out of retries — log and return last result anyway
+        log.warning("    [%s] self-check exhausted retries; missing %s", name, report.missing)
+        self_check_log.append({"step": name, "result": "missing_after_retries",
+                               "missing": report.missing})
+        emit("self_check_fail", step=name, missing=report.missing[:10])
+        return result
+
     with LLMClient(cfg) as client:
         # 1. Use cases (optional)
         use_cases = ""
         if not skip_use_cases:
             begin("use_cases")
-            use_cases = step_use_cases(client, task, model_overrides)
+            use_cases = _retry_with_check(
+                "use_cases",
+                lambda fb: step_use_cases(client, task, model_overrides, fb),
+                lambda result: validate_use_cases(result, task.business_requirements),
+            )
             write_text(output_dir / "docs" / "use-cases.md", use_cases)
             emit("step_done", step="use_cases", chars=len(use_cases),
                  path="docs/use-cases.md")
 
-        # 2. NFR
+        # 2. NFR (no validation — the criteria are too subjective)
         begin("nfr")
         nfr = step_nfr(client, task, model_overrides)
         write_text(output_dir / "docs" / "non-functional-req.md", nfr)
         emit("step_done", step="nfr", chars=len(nfr),
              path="docs/non-functional-req.md")
 
-        # 3. FR (with traceability to BT, UC, Features)
+        # 3. FR (with traceability check: every required БТ must be referenced)
         begin("fr")
-        fr = step_fr(client, task, use_cases, nfr, model_overrides)
+        fr = _retry_with_check(
+            "fr",
+            lambda fb: step_fr(client, task, use_cases, nfr, model_overrides, fb),
+            lambda result: validate_fr(result, task.business_requirements),
+        )
         write_text(output_dir / "docs" / "functional-req.md", fr)
         emit("step_done", step="fr", chars=len(fr),
              path="docs/functional-req.md")
 
-        # 4. Source code
+        # 4. Source code (with traceability check: every ФТ must have @implements)
         begin("code")
-        code_files = step_code(client, task, use_cases, nfr, fr, model_overrides)
+        code_files = _retry_with_check(
+            "code",
+            lambda fb: step_code(client, task, use_cases, nfr, fr, model_overrides, fb),
+            lambda result: validate_code(result, fr),
+        )
         write_files(output_dir, code_files)
         log.info("    wrote %d source files", len(code_files))
         emit("step_done", step="code", file_count=len(code_files),
@@ -302,15 +378,36 @@ def run_pipeline(
         write_text(output_dir / "README.md", readme)
         emit("step_done", step="readme", chars=len(readme), path="README.md")
 
-        # Persist usage summary
+        # Persist usage summary + self-check log
         summary_path = output_dir / "_generator_log.md"
+        sc_lines = []
+        if self_check:
+            sc_lines.append("\n## Self-check\n")
+            if not self_check_log:
+                sc_lines.append("- (нет записей; шаги пропущены)\n")
+            for entry in self_check_log:
+                step = entry["step"]
+                result = entry["result"]
+                if result == "passed_first_try":
+                    sc_lines.append(f"- ✅ `{step}`: прошёл с первого раза\n")
+                elif result == "passed_after_retry":
+                    sc_lines.append(
+                        f"- ♻️ `{step}`: прошёл за {entry['attempts']} попыток\n"
+                    )
+                else:
+                    miss = ", ".join(entry.get("missing", [])[:5])
+                    sc_lines.append(f"- ⚠️ `{step}`: остались непокрытыми: {miss}\n")
+        else:
+            sc_lines.append("\n## Self-check\n- отключён (`self_check=False`)\n")
+
         summary_path.write_text(
             "# Generator log\n\n"
             f"- Task: `{task.name}`\n"
             f"- Provider: `{cfg.provider}`\n"
-            f"- Model fast: `{cfg.model_fast}`\n"
-            f"- Model smart: `{cfg.model_smart}`\n\n"
-            "## Token usage\n\n```\n" + client.usage.summary() + "\n```\n",
+            f"- Model fast: `{effective_fast}`\n"
+            f"- Model smart: `{effective_smart}`\n\n"
+            "## Token usage\n\n```\n" + client.usage.summary() + "\n```\n"
+            + "".join(sc_lines),
             encoding="utf-8",
         )
 
