@@ -126,11 +126,56 @@
           <span class="model-meta" id="model-smart-meta"></span>
         </label>
 
+        <details class="advanced-section">
+          <summary>Продвинутые настройки — модель на каждый шаг отдельно</summary>
+          <p class="modal-hint">Если задано — переопределяет fast/smart выше для этого шага.</p>
+          <div class="per-step-grid">
+            <label class="field">
+              <span class="label-text">👤 use_cases</span>
+              <select id="model-step-use_cases" data-step="use_cases"></select>
+            </label>
+            <label class="field">
+              <span class="label-text">⚡ nfr</span>
+              <select id="model-step-nfr" data-step="nfr"></select>
+            </label>
+            <label class="field">
+              <span class="label-text">📐 fr</span>
+              <select id="model-step-fr" data-step="fr"></select>
+            </label>
+            <label class="field">
+              <span class="label-text">💻 code</span>
+              <select id="model-step-code" data-step="code"></select>
+            </label>
+            <label class="field">
+              <span class="label-text">🧪 tests</span>
+              <select id="model-step-tests" data-step="tests"></select>
+            </label>
+            <label class="field">
+              <span class="label-text">📖 readme</span>
+              <select id="model-step-readme" data-step="readme"></select>
+            </label>
+          </div>
+        </details>
+
         <div class="modal-actions">
           <button class="secondary-btn" id="model-reset">Сбросить к дефолтам</button>
           <button class="primary-btn modal-save" id="settings-save">Сохранить</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Refinement panel (shown after a successful generation) -->
+  <div id="refine-panel" class="refine-panel" hidden>
+    <div class="refine-head">
+      <strong>Доработка</strong>
+      <span class="refine-hint">короткий комментарий → точечные правки кода</span>
+    </div>
+    <div class="refine-body">
+      <input type="text" id="refine-comment"
+             placeholder="например: «добавь валидацию email» или «поменяй цветовую схему на синюю»"
+             autocomplete="off">
+      <button class="primary-btn refine-apply" id="refine-apply">Применить</button>
     </div>
   </div>
 

@@ -44,7 +44,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from generator.config import Config, models_for_provider
 from generator.io_utils import TaskInput, clean_output, write_text
-from generator.pipeline import run_pipeline
+from generator.pipeline import run_pipeline, run_refinement
 
 log = logging.getLogger("ui.server")
 
@@ -90,6 +90,13 @@ class GenerateRequest(BaseModel):
     self_check: bool = True
     # Live model overrides — let the user pick from UI dropdowns
     model_fast: Optional[str] = None
+    model_smart: Optional[str] = None
+    # Per-step model overrides (advanced) — keys: use_cases | nfr | fr | code | tests | readme
+    per_step_models: Optional[dict[str, str]] = None
+
+
+class RefineRequest(BaseModel):
+    comment: str = Field(min_length=3)
     model_smart: Optional[str] = None
 
 
@@ -177,6 +184,11 @@ async def create_job(req: GenerateRequest) -> JSONResponse:
         overrides["fast"] = req.model_fast
     if req.model_smart:
         overrides["smart"] = req.model_smart
+    if req.per_step_models:
+        # per-step has highest priority
+        for step, model in req.per_step_models.items():
+            if step and model:
+                overrides[step] = model
 
     threading.Thread(
         target=_run_job_thread,
@@ -186,6 +198,75 @@ async def create_job(req: GenerateRequest) -> JSONResponse:
     ).start()
 
     return JSONResponse({"id": job_id})
+
+
+@app.post("/api/jobs/{job_id}/refine")
+async def refine_job(job_id: str, req: RefineRequest) -> JSONResponse:
+    """Apply a refinement comment to an already-completed job.
+
+    Reads the job's artifacts/, runs the refine step, writes patched files back,
+    and emits a fresh stream of events on the SAME queue (so the UI re-attaches
+    to /stream and sees the new pipeline run).
+    """
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="job not found")
+    if job.status not in ("done", "error"):
+        raise HTTPException(status_code=409, detail="job is still running")
+
+    artifacts_dir = job.output_dir / "artifacts"
+    if not artifacts_dir.exists():
+        raise HTTPException(status_code=404, detail="no artifacts to refine")
+
+    cfg = Config.load()
+    overrides: dict[str, str] = {}
+    if req.model_smart:
+        overrides["smart"] = req.model_smart
+
+    # Reset the job state for a fresh stream
+    job.status = "running"
+    job.events = []
+    # Re-create queue so previous SSE consumers don't get stale data
+    job.queue = asyncio.Queue()
+
+    threading.Thread(
+        target=_run_refine_thread,
+        args=(job, cfg, artifacts_dir, req.comment, overrides),
+        daemon=True,
+    ).start()
+
+    return JSONResponse({"id": job_id, "mode": "refine"})
+
+
+def _run_refine_thread(
+    job: Job,
+    cfg: Config,
+    artifacts_dir: Path,
+    comment: str,
+    model_overrides: dict[str, str],
+) -> None:
+    def push(payload: dict[str, Any]) -> None:
+        job.events.append(payload)
+        if job.loop and not job.loop.is_closed():
+            asyncio.run_coroutine_threadsafe(job.queue.put(payload), job.loop)
+
+    try:
+        run_refinement(
+            cfg=cfg,
+            output_dir=artifacts_dir,
+            comment=comment,
+            on_event=push,
+            model_overrides=model_overrides or None,
+        )
+        job.status = "done"
+    except Exception as e:
+        log.exception("Refinement %s failed", job.id)
+        job.status = "error"
+        job.error = str(e)
+        push({"type": "error", "error": str(e)})
+    finally:
+        if job.loop and not job.loop.is_closed():
+            asyncio.run_coroutine_threadsafe(job.queue.put(None), job.loop)
 
 
 def _run_job_thread(

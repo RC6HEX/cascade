@@ -3,6 +3,8 @@
 
 const $ = (id) => document.getElementById(id);
 
+const STEP_NAMES = ['use_cases', 'nfr', 'fr', 'code', 'tests', 'readme'];
+
 const els = {
   preset: $('preset-select'),
   bt: $('bt'),
@@ -30,12 +32,17 @@ const els = {
   modelFastMeta: $('model-fast-meta'),
   modelSmartMeta: $('model-smart-meta'),
   modelReset: $('model-reset'),
+
+  // refinement
+  refinePanel: $('refine-panel'),
+  refineComment: $('refine-comment'),
+  refineApply: $('refine-apply'),
 };
 
 let activeJobId = null;
 let activeES = null;
 let modelsCache = null;       // { provider, default_fast, default_smart, models: [...] }
-let userModelChoice = {};     // { fast, smart } from localStorage
+let userModelChoice = {};     // { fast, smart, per_step: {use_cases, nfr, ...} }
 
 const LS_KEY = 'cascade.modelChoice';
 
@@ -58,6 +65,11 @@ const LS_KEY = 'cascade.modelChoice';
   els.modelReset.addEventListener('click', resetModelChoice);
   els.modelFastSel.addEventListener('change', () => updateModelMeta('fast'));
   els.modelSmartSel.addEventListener('change', () => updateModelMeta('smart'));
+
+  if (els.refineApply) els.refineApply.addEventListener('click', onRefineApply);
+  if (els.refineComment) els.refineComment.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onRefineApply(); }
+  });
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !els.settingsModal.hidden) closeSettings();
@@ -101,6 +113,10 @@ async function loadModels() {
   }
   populateModelSelect(els.modelFastSel, 'fast');
   populateModelSelect(els.modelSmartSel, 'smart');
+  for (const step of STEP_NAMES) {
+    const sel = document.getElementById(`model-step-${step}`);
+    if (sel) populatePerStepSelect(sel, step);
+  }
   updateModelMeta('fast');
   updateModelMeta('smart');
 }
@@ -117,13 +133,29 @@ function populateModelSelect(selectEl, tier) {
     if (m.id === chosen) opt.selected = true;
     selectEl.appendChild(opt);
   }
-  // If chosen not in list (custom model), add as first option
   if (!modelsCache.models.find(m => m.id === chosen)) {
     const opt = document.createElement('option');
-    opt.value = chosen;
-    opt.textContent = chosen;
-    opt.selected = true;
+    opt.value = chosen; opt.textContent = chosen; opt.selected = true;
     selectEl.prepend(opt);
+  }
+}
+
+function populatePerStepSelect(selectEl, step) {
+  if (!modelsCache) return;
+  selectEl.innerHTML = '';
+  // First option: "use tier default" (empty value)
+  const noOverride = document.createElement('option');
+  noOverride.value = '';
+  noOverride.textContent = '— использовать tier-дефолт —';
+  selectEl.appendChild(noOverride);
+
+  const chosen = (userModelChoice.per_step || {})[step] || '';
+  for (const m of modelsCache.models) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = `${m.label}  ($${m.price_in}/$${m.price_out})`;
+    if (m.id === chosen) opt.selected = true;
+    selectEl.appendChild(opt);
   }
 }
 
@@ -144,6 +176,7 @@ function loadModelChoice() {
   try {
     userModelChoice = JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {};
   } catch { userModelChoice = {}; }
+  if (!userModelChoice.per_step) userModelChoice.per_step = {};
 }
 
 function persistModelChoice() {
@@ -152,34 +185,44 @@ function persistModelChoice() {
 
 function openSettings() {
   els.settingsModal.hidden = false;
-  // Re-sync selectors with current choice
   if (modelsCache) {
     populateModelSelect(els.modelFastSel, 'fast');
     populateModelSelect(els.modelSmartSel, 'smart');
+    for (const step of STEP_NAMES) {
+      const sel = document.getElementById(`model-step-${step}`);
+      if (sel) populatePerStepSelect(sel, step);
+    }
     updateModelMeta('fast');
     updateModelMeta('smart');
   }
 }
 
-function closeSettings() {
-  els.settingsModal.hidden = true;
-}
+function closeSettings() { els.settingsModal.hidden = true; }
 
 function saveSettings() {
   userModelChoice = {
     fast: els.modelFastSel.value,
     smart: els.modelSmartSel.value,
+    per_step: {},
   };
+  for (const step of STEP_NAMES) {
+    const sel = document.getElementById(`model-step-${step}`);
+    if (sel && sel.value) userModelChoice.per_step[step] = sel.value;
+  }
   persistModelChoice();
   closeSettings();
 }
 
 function resetModelChoice() {
-  userModelChoice = {};
+  userModelChoice = { per_step: {} };
   persistModelChoice();
   if (modelsCache) {
     populateModelSelect(els.modelFastSel, 'fast');
     populateModelSelect(els.modelSmartSel, 'smart');
+    for (const step of STEP_NAMES) {
+      const sel = document.getElementById(`model-step-${step}`);
+      if (sel) populatePerStepSelect(sel, step);
+    }
     updateModelMeta('fast');
     updateModelMeta('smart');
   }
@@ -223,6 +266,9 @@ async function onGenerate() {
   };
   if (userModelChoice.fast) payload.model_fast = userModelChoice.fast;
   if (userModelChoice.smart) payload.model_smart = userModelChoice.smart;
+  if (userModelChoice.per_step && Object.keys(userModelChoice.per_step).length) {
+    payload.per_step_models = userModelChoice.per_step;
+  }
 
   let jobId;
   try {
@@ -251,13 +297,15 @@ async function onGenerate() {
 
 function resetUI() {
   els.steps.forEach((li) => {
-    li.classList.remove('running', 'done', 'error', 'skipped');
+    li.classList.remove('running', 'done', 'error', 'skipped', 'rechecking', 'warning');
     li.querySelector('.step-status').textContent = '';
   });
   els.meta.textContent = '';
   els.fileTree.innerHTML = '';
   els.fileContent.innerHTML = '<code>← выбери файл слева</code>';
+  els.fileContent.classList.remove('streaming');
   els.download.disabled = true;
+  if (els.refinePanel) els.refinePanel.hidden = true;
 }
 
 function attachStream(jobId) {
@@ -267,14 +315,20 @@ function attachStream(jobId) {
 
   const startTs = Date.now();
   let stepStart = null;
+  let codeBuffer = '';   // accumulated streaming text for `code` step
+  let isRefine = false;
 
   es.addEventListener('start', (e) => {
     const d = JSON.parse(e.data);
+    isRefine = !!d.refinement;
     setMeta({
       'Задача': d.task,
       'Провайдер': d.provider,
-      'Модели': `fast=${d.model_fast.split('/').pop()} · smart=${d.model_smart.split('/').pop()}`,
+      'Модели': isRefine
+        ? `smart=${d.model_smart.split('/').pop()}`
+        : `fast=${d.model_fast.split('/').pop()} · smart=${d.model_smart.split('/').pop()}`,
       'Шагов': d.total,
+      ...(isRefine ? { 'Режим': 'доработка', 'Комментарий': d.comment } : {}),
     });
   });
 
@@ -287,33 +341,40 @@ function attachStream(jobId) {
     const d = JSON.parse(e.data);
     const elapsed = stepStart ? ((Date.now() - stepStart) / 1000).toFixed(1) : '';
     markStep(d.step, 'done', elapsed ? `${elapsed}s` : '');
+    if (d.step === 'code') {
+      els.fileContent.classList.remove('streaming');
+      codeBuffer = '';
+    }
   });
 
-  // Self-check events: visual hint that the step is being re-run
+  // Live streaming chunks during code generation
+  es.addEventListener('step_chunk', (e) => {
+    const d = JSON.parse(e.data);
+    if (d.step !== 'code') return;
+    codeBuffer = d.text || (codeBuffer + (d.piece || ''));
+    showLiveCode(codeBuffer);
+  });
+
+  // Self-check events
   es.addEventListener('self_check_retry', (e) => {
     const d = JSON.parse(e.data);
     const li = document.querySelector(`#steps li[data-step="${d.step}"]`);
     if (!li) return;
     li.classList.add('rechecking');
-    const status = li.querySelector('.step-status');
-    status.textContent = `↻ ${d.attempt}: ${(d.missing || []).slice(0,3).join(', ')}`;
+    li.querySelector('.step-status').textContent = `↻ ${d.attempt}: ${(d.missing || []).slice(0,3).join(', ')}`;
   });
-
   es.addEventListener('self_check_pass', (e) => {
     const d = JSON.parse(e.data);
     const li = document.querySelector(`#steps li[data-step="${d.step}"]`);
-    if (!li) return;
-    li.classList.remove('rechecking');
+    if (li) li.classList.remove('rechecking');
   });
-
   es.addEventListener('self_check_fail', (e) => {
     const d = JSON.parse(e.data);
     const li = document.querySelector(`#steps li[data-step="${d.step}"]`);
     if (!li) return;
     li.classList.remove('rechecking');
     li.classList.add('warning');
-    const status = li.querySelector('.step-status');
-    status.textContent = `⚠ missing: ${(d.missing || []).slice(0,2).join(',')}`;
+    li.querySelector('.step-status').textContent = `⚠ missing: ${(d.missing || []).slice(0,2).join(',')}`;
   });
 
   es.addEventListener('done', (e) => {
@@ -325,6 +386,7 @@ function attachStream(jobId) {
       'Вызовов LLM': d.calls,
       'Tokens in': d.input_tokens.toLocaleString('ru-RU'),
       'Tokens out': d.output_tokens.toLocaleString('ru-RU'),
+      ...(d.refinement ? { 'Режим': 'доработка' } : {}),
     });
     finishJob(jobId);
   });
@@ -333,7 +395,6 @@ function attachStream(jobId) {
     let payload = {};
     try { payload = JSON.parse(e.data || '{}'); } catch {}
     if (payload && payload.error) {
-      // mark current running step as error
       const running = document.querySelector('.steps li.running');
       if (running) {
         running.classList.remove('running');
@@ -350,10 +411,29 @@ function attachStream(jobId) {
   });
 }
 
+function showLiveCode(text) {
+  // Show streaming text in the file viewer pane with a special class
+  els.fileContent.classList.add('streaming');
+  els.fileContent.innerHTML = `<code>${escapeHtml(text)}<span class="caret"></span></code>`;
+  // Auto-scroll to bottom while streaming
+  els.fileContent.scrollTop = els.fileContent.scrollHeight;
+  // Hint in tree
+  if (!els.fileTree.querySelector('li[data-streaming="1"]')) {
+    const li = document.createElement('li');
+    li.dataset.path = '__streaming';
+    li.dataset.streaming = '1';
+    li.dataset.icon = '⚡';
+    li.innerHTML = `<span class="filename">генерация кода…</span><span class="size">live</span>`;
+    li.classList.add('active');
+    els.fileTree.querySelectorAll('li').forEach((x) => x.classList.remove('active'));
+    els.fileTree.prepend(li);
+  }
+}
+
 function markStep(name, state, status = '') {
   const li = document.querySelector(`#steps li[data-step="${name}"]`);
   if (!li) return;
-  li.classList.remove('running', 'done', 'error', 'skipped');
+  li.classList.remove('running', 'done', 'error', 'skipped', 'rechecking', 'warning');
   li.classList.add(state);
   if (status) li.querySelector('.step-status').textContent = status;
 }
@@ -370,6 +450,12 @@ async function finishJob(jobId, isError = false) {
   if (isError) return;
   els.download.disabled = false;
   await loadFiles(jobId);
+  // Show refinement panel
+  if (els.refinePanel) {
+    els.refinePanel.hidden = false;
+    els.refineComment.value = '';
+    els.refineComment.focus();
+  }
 }
 
 function fileIcon(path) {
@@ -413,6 +499,7 @@ async function loadFiles(jobId) {
 async function selectFile(jobId, li) {
   els.fileTree.querySelectorAll('li').forEach((x) => x.classList.remove('active'));
   li.classList.add('active');
+  els.fileContent.classList.remove('streaming');
   const path = li.dataset.path;
   const r = await fetch(`/api/jobs/${jobId}/file?path=${encodeURIComponent(path)}`);
   const text = await r.text();
@@ -425,6 +512,45 @@ function onDownload() {
   window.location.href = `/api/jobs/${activeJobId}/zip`;
 }
 
+// ---------- refinement ----------
+
+async function onRefineApply() {
+  if (!activeJobId) return;
+  const comment = els.refineComment.value.trim();
+  if (comment.length < 3) {
+    alert('Опиши доработку чуть подробнее (от 3 символов).');
+    return;
+  }
+  els.refineApply.disabled = true;
+  els.refineApply.textContent = 'Применяю...';
+
+  const payload = { comment };
+  if (userModelChoice.smart) payload.model_smart = userModelChoice.smart;
+
+  try {
+    const r = await fetch(`/api/jobs/${activeJobId}/refine`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      const txt = await r.text();
+      throw new Error(`HTTP ${r.status}: ${txt.slice(0, 200)}`);
+    }
+    // Reset progress UI for the refine run
+    els.steps.forEach((li) => {
+      li.classList.remove('running', 'done', 'error', 'skipped', 'rechecking', 'warning');
+      li.querySelector('.step-status').textContent = '';
+    });
+    attachStream(activeJobId);
+  } catch (e) {
+    alert(`Не удалось применить: ${e}`);
+  } finally {
+    els.refineApply.disabled = false;
+    els.refineApply.textContent = 'Применить';
+  }
+}
+
 // ---------- helpers ----------
 
 function escapeHtml(s) {
@@ -435,11 +561,7 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
-
-function cssEscape(s) {
-  return String(s).replace(/(["\\])/g, '\\$1');
-}
-
+function cssEscape(s) { return String(s).replace(/(["\\])/g, '\\$1'); }
 function formatSize(n) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;

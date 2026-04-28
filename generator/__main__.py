@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from .config import Config
-from .pipeline import run_pipeline
+from .pipeline import run_pipeline, run_refinement
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -67,6 +67,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Max self-check retries per step (default: 2)",
     )
     parser.add_argument(
+        "--refine",
+        type=Path,
+        metavar="OUTPUT_DIR",
+        help="Refinement mode: re-run only the code step against an existing output dir, "
+             "applying --comment as user feedback.",
+    )
+    parser.add_argument(
+        "--comment",
+        help="Short refinement comment, e.g. 'добавь валидацию email'",
+    )
+    parser.add_argument(
         "--provider",
         choices=("gemini", "openrouter"),
         help="Override LLM provider (otherwise from .env)",
@@ -91,13 +102,43 @@ def main(argv: list[str] | None = None) -> int:
         from dataclasses import replace
         cfg = replace(cfg, provider=args.provider)
 
+    overrides: dict[str, str] = {}
+    if args.model_fast:
+        overrides["fast"] = args.model_fast
+    if args.model_smart:
+        overrides["smart"] = args.model_smart
+
+    # === Refinement mode ===
+    if args.refine:
+        if not args.comment:
+            log.error("--refine requires --comment, e.g. --comment 'добавь валидацию'")
+            return 2
+        out_dir = args.refine.resolve()
+        log.info("Refinement: dir=%s, comment=%r", out_dir, args.comment)
+        started = time.time()
+        try:
+            report = run_refinement(
+                cfg=cfg,
+                output_dir=out_dir,
+                comment=args.comment,
+                model_overrides=overrides or None,
+            )
+        except Exception as e:
+            log.exception("Refinement failed: %s", e)
+            return 1
+        elapsed = time.time() - started
+        log.info("Refinement DONE in %.1fs. Patched: %s",
+                 elapsed, report["patched_files"])
+        log.info("Usage:\n%s", report["usage"].summary())
+        return 0
+
     # Resolve input
     if args.input:
         input_dir = args.input.resolve()
     elif args.task:
         input_dir = (cfg.project_root / "input" / args.task).resolve()
     else:
-        log.error("Specify either --task or --input")
+        log.error("Specify either --task, --input, or --refine OUTPUT_DIR")
         return 2
 
     # Resolve output
@@ -111,12 +152,6 @@ def main(argv: list[str] | None = None) -> int:
     log.info("Provider: %s | fast=%s smart=%s", cfg.provider, cfg.model_fast, cfg.model_smart)
     log.info("Input  : %s", input_dir)
     log.info("Output : %s", output_dir)
-
-    overrides: dict[str, str] = {}
-    if args.model_fast:
-        overrides["fast"] = args.model_fast
-    if args.model_smart:
-        overrides["smart"] = args.model_smart
 
     started = time.time()
     try:

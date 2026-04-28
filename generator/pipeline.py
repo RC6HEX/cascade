@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -145,6 +147,7 @@ def step_code(
     fr: str,
     overrides: Optional[dict[str, str]] = None,
     feedback: str = "",
+    on_chunk: Optional[Callable[[str], None]] = None,
 ) -> dict[str, str]:
     system, user_tpl = _load_prompt("code")
     user = (
@@ -155,14 +158,17 @@ def step_code(
         .replace("{fr}", fr)
     )
     user = _with_feedback(user, feedback)
-    text = client.generate(
-        step="code",
-        model=_resolve_model(client.cfg, "code", overrides),
-        system=system,
-        user=user,
-        temperature=0.4,
-        max_output_tokens=16384,
-    )
+    model = _resolve_model(client.cfg, "code", overrides)
+    if on_chunk:
+        text = client.generate_stream(
+            step="code", model=model, system=system, user=user,
+            temperature=0.4, max_output_tokens=16384, on_chunk=on_chunk,
+        )
+    else:
+        text = client.generate(
+            step="code", model=model, system=system, user=user,
+            temperature=0.4, max_output_tokens=16384,
+        )
     files = parse_files_strict(text)
     # Validate at least index.html and one js
     if not any(p.endswith("index.html") for p in files):
@@ -202,6 +208,40 @@ def step_tests(
     return parse_files_strict(text)
 
 
+def step_refine(
+    client: LLMClient,
+    code_files: dict[str, str],
+    fr: str,
+    comment: str,
+    overrides: Optional[dict[str, str]] = None,
+) -> dict[str, str]:
+    """Refinement: take existing code + user comment → patched files.
+
+    Returns a dict of CHANGED files only. Caller merges with previous code.
+    """
+    listing_parts = []
+    for path, content in code_files.items():
+        listing_parts.append(f"### {path}\n```\n{content}\n```")
+    code_listing = "\n\n".join(listing_parts)
+
+    system, user_tpl = _load_prompt("refine")
+    user = (
+        user_tpl
+        .replace("{code_listing}", code_listing)
+        .replace("{fr}", fr)
+        .replace("{comment}", comment.strip())
+    )
+    text = client.generate(
+        step="refine",
+        model=_resolve_model(client.cfg, "code", overrides),  # use smart tier
+        system=system,
+        user=user,
+        temperature=0.3,
+        max_output_tokens=16384,
+    )
+    return parse_files_strict(text)
+
+
 def step_readme(
     client: LLMClient,
     task: TaskInput,
@@ -230,6 +270,93 @@ def step_readme(
 
 
 # ---------- orchestrator ----------
+
+def run_refinement(
+    *,
+    cfg: Config,
+    output_dir: Path,
+    comment: str,
+    on_event: Optional[ProgressCallback] = None,
+    model_overrides: Optional[dict[str, str]] = None,
+) -> dict[str, object]:
+    """Re-run only the code step on an existing output dir, applying a user comment.
+
+    Reads `output_dir/src/*` and `output_dir/docs/functional-req.md`,
+    asks the LLM to produce changed files only, then merges them back into src/.
+    Old files NOT mentioned in the response are preserved.
+    """
+    src_dir = output_dir / "src"
+    fr_path = output_dir / "docs" / "functional-req.md"
+    if not src_dir.exists():
+        raise FileNotFoundError(f"src/ not found in {output_dir} — run pipeline first")
+    if not fr_path.exists():
+        raise FileNotFoundError(f"docs/functional-req.md not found — run pipeline first")
+
+    def emit(t: str, **payload: Any) -> None:
+        if on_event:
+            try:
+                on_event({"type": t, **payload})
+            except Exception:
+                log.exception("on_event callback raised — ignoring")
+
+    code_files: dict[str, str] = {}
+    for p in sorted(src_dir.rglob("*")):
+        if p.is_file():
+            rel = "src/" + p.relative_to(src_dir).as_posix()
+            code_files[rel] = p.read_text(encoding="utf-8", errors="replace")
+    fr = fr_path.read_text(encoding="utf-8")
+
+    emit("start", task=output_dir.name, total=1, refinement=True,
+         provider=cfg.provider, model_fast=cfg.model_fast,
+         model_smart=(model_overrides or {}).get("smart", cfg.model_smart),
+         comment=comment)
+    emit("step_start", step="refine", index=1, total=1)
+
+    log.info("Refinement: comment=%r, %d existing files", comment[:80], len(code_files))
+
+    with LLMClient(cfg) as client:
+        try:
+            patched = step_refine(client, code_files, fr, comment, model_overrides)
+        except Exception as e:
+            emit("error", error=str(e), step="refine")
+            raise
+
+        # Merge patched files into existing
+        merged = {**code_files, **patched}
+        # Write only changed files (so the FS reflects the diff cleanly)
+        for path, content in patched.items():
+            target = output_dir / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+
+        emit("step_done", step="refine", file_count=len(patched),
+             paths=sorted(patched.keys()))
+
+        # Append a refinement entry to the log
+        log_path = output_dir / "_generator_log.md"
+        if log_path.exists():
+            log_path.write_text(
+                log_path.read_text(encoding="utf-8")
+                + f"\n## Refinement\n- Comment: {comment.strip()!r}\n"
+                + f"- Changed files: {', '.join(sorted(patched.keys()))}\n"
+                + f"- Tokens: in={client.usage.input_tokens}, out={client.usage.output_tokens}\n",
+                encoding="utf-8",
+            )
+
+        emit("done",
+             files=len(patched),
+             input_tokens=client.usage.input_tokens,
+             output_tokens=client.usage.output_tokens,
+             calls=client.usage.calls,
+             refinement=True)
+
+        return {
+            "task": output_dir.name,
+            "files_generated": len(patched),
+            "usage": client.usage,
+            "patched_files": sorted(patched.keys()),
+        }
+
 
 def run_pipeline(
     *,
@@ -319,25 +446,65 @@ def run_pipeline(
         return result
 
     with LLMClient(cfg) as client:
-        # 1. Use cases (optional)
+        # 1+2. Use cases & NFR in parallel — both depend only on input.
+        # We still emit step_start/step_done in pipeline order so the UI shows
+        # them sequentially even though they run concurrently underneath.
         use_cases = ""
-        if not skip_use_cases:
-            begin("use_cases")
-            use_cases = _retry_with_check(
+        nfr = ""
+
+        def _do_use_cases() -> str:
+            return _retry_with_check(
                 "use_cases",
                 lambda fb: step_use_cases(client, task, model_overrides, fb),
                 lambda result: validate_use_cases(result, task.business_requirements),
             )
+
+        def _do_nfr() -> str:
+            return step_nfr(client, task, model_overrides)
+
+        if skip_use_cases:
+            # Only NFR — no parallelism needed.
+            begin("nfr")
+            nfr = _do_nfr()
+            write_text(output_dir / "docs" / "non-functional-req.md", nfr)
+            emit("step_done", step="nfr", chars=len(nfr),
+                 path="docs/non-functional-req.md")
+        else:
+            # Mark both as starting up front so the UI shows the parallelism
+            step_index += 1
+            emit("step_start", step="use_cases", index=step_index, total=total_steps)
+            step_index += 1
+            emit("step_start", step="nfr", index=step_index, total=total_steps)
+            log.info("[%d/%d] Generating use_cases + nfr (parallel) ...",
+                     step_index, total_steps)
+
+            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="cascade-doc") as pool:
+                fut_uc = pool.submit(_do_use_cases)
+                fut_nfr = pool.submit(_do_nfr)
+                # Wait for both. Whichever finishes first emits step_done first.
+                results: dict[str, tuple[Any, Optional[Exception]]] = {}
+                from concurrent.futures import as_completed
+                fut_to_name = {fut_uc: "use_cases", fut_nfr: "nfr"}
+                for fut in as_completed(fut_to_name):
+                    name = fut_to_name[fut]
+                    try:
+                        results[name] = (fut.result(), None)
+                    except Exception as e:
+                        results[name] = (None, e)
+
+            # Re-raise the first error if any
+            for name, (_, err) in results.items():
+                if err:
+                    raise err
+
+            use_cases, _ = results["use_cases"]
+            nfr, _ = results["nfr"]
             write_text(output_dir / "docs" / "use-cases.md", use_cases)
             emit("step_done", step="use_cases", chars=len(use_cases),
                  path="docs/use-cases.md")
-
-        # 2. NFR (no validation — the criteria are too subjective)
-        begin("nfr")
-        nfr = step_nfr(client, task, model_overrides)
-        write_text(output_dir / "docs" / "non-functional-req.md", nfr)
-        emit("step_done", step="nfr", chars=len(nfr),
-             path="docs/non-functional-req.md")
+            write_text(output_dir / "docs" / "non-functional-req.md", nfr)
+            emit("step_done", step="nfr", chars=len(nfr),
+                 path="docs/non-functional-req.md")
 
         # 3. FR (with traceability check: every required БТ must be referenced)
         begin("fr")
@@ -350,11 +517,29 @@ def run_pipeline(
         emit("step_done", step="fr", chars=len(fr),
              path="docs/functional-req.md")
 
-        # 4. Source code (with traceability check: every ФТ must have @implements)
+        # 4. Source code (streaming + traceability check: every ФТ → @implements)
         begin("code")
+
+        # Buffered chunk emitter — flush every ~512 chars or on whitespace burst,
+        # so the SSE stream doesn't get spammed with single-token events.
+        chunk_buf: list[str] = []
+        chunk_lock = threading.Lock()
+        last_flush_len = [0]
+
+        def _on_chunk(piece: str) -> None:
+            with chunk_lock:
+                chunk_buf.append(piece)
+                total = sum(len(p) for p in chunk_buf)
+                # Flush every ~256 chars OR when we get a newline burst
+                if total - last_flush_len[0] >= 256 or piece.endswith("\n\n"):
+                    text = "".join(chunk_buf)
+                    last_flush_len[0] = total
+                    emit("step_chunk", step="code", text=text)
+
         code_files = _retry_with_check(
             "code",
-            lambda fb: step_code(client, task, use_cases, nfr, fr, model_overrides, fb),
+            lambda fb: step_code(client, task, use_cases, nfr, fr,
+                                 model_overrides, fb, on_chunk=_on_chunk),
             lambda result: validate_code(result, fr),
         )
         write_files(output_dir, code_files)

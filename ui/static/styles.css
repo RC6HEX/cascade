@@ -665,6 +665,114 @@ select:focus, textarea:focus, input:focus {
 @keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
 @keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(0.98) } to { opacity: 1; transform: none } }
 
+/* === Advanced settings (per-step models) === */
+.advanced-section {
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: var(--bg-elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.advanced-section summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--accent);
+  user-select: none;
+  padding: 4px 0;
+}
+.advanced-section summary:hover { color: var(--info); }
+.advanced-section[open] summary { margin-bottom: 8px; }
+.per-step-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+.per-step-grid .field { margin-bottom: 0; }
+.per-step-grid .label-text { font-size: 10px; }
+.per-step-grid select { font-size: 11px; padding: 8px 10px; padding-right: 30px; }
+
+/* === Refinement panel === */
+.refine-panel {
+  position: sticky;
+  bottom: 0;
+  margin: 0 28px;
+  padding: 14px 18px;
+  background: linear-gradient(180deg, var(--bg-elev-2) 0%, var(--bg-elev-1) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 5;
+}
+.refine-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.refine-head strong {
+  font-size: 13px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.refine-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+.refine-body {
+  display: flex;
+  gap: 10px;
+}
+.refine-body input[type="text"] {
+  flex: 1;
+  font-family: var(--sans);
+}
+.refine-apply { width: auto; padding: 12px 24px; margin-top: 0; flex-shrink: 0; }
+
+/* === Live streaming preview === */
+.file-content.streaming {
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.04) 0%, var(--bg) 50%);
+  border-left: 2px solid var(--accent);
+}
+.file-content.streaming::before {
+  content: '⚡ live streaming';
+  display: block;
+  position: sticky;
+  top: 0;
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  background: var(--bg-elev-2);
+  padding: 4px 10px;
+  margin: -18px -22px 8px;
+  border-radius: 0 0 4px 4px;
+  text-transform: uppercase;
+  z-index: 1;
+}
+.file-content .caret {
+  display: inline-block;
+  width: 7px;
+  height: 12px;
+  background: var(--accent);
+  vertical-align: text-bottom;
+  margin-left: 2px;
+  animation: caret-blink 1s step-end infinite;
+}
+.file-tree li[data-streaming="1"] {
+  color: var(--accent);
+  font-weight: 600;
+  background: rgba(124, 92, 255, 0.06);
+}
+@keyframes caret-blink { 50% { opacity: 0; } }
+
 /* === Footer === */
 .footer {
   text-align: center;
