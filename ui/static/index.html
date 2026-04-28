@@ -3,16 +3,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Автономный генератор приложений</title>
+  <title>Cascade — генератор приложений из бизнес-требований</title>
   <link rel="stylesheet" href="/static/styles.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%237c5cff' d='M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z'/%3E%3C/svg%3E">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="brand-pill">Альфа Будущее</span>
-      <h1>Автономный генератор</h1>
+      <div class="brand-logo" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <rect x="2" y="2" width="8" height="8" rx="1.5" fill="url(#g1)"/>
+          <rect x="14" y="2" width="8" height="8" rx="1.5" fill="url(#g2)" opacity="0.7"/>
+          <rect x="2" y="14" width="8" height="8" rx="1.5" fill="url(#g3)" opacity="0.55"/>
+          <rect x="14" y="14" width="8" height="8" rx="1.5" fill="url(#g4)" opacity="0.4"/>
+          <defs>
+            <linearGradient id="g1" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#7c5cff"/><stop offset="100%" stop-color="#3a86ff"/></linearGradient>
+            <linearGradient id="g2" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#3a86ff"/><stop offset="100%" stop-color="#3acf7e"/></linearGradient>
+            <linearGradient id="g3" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#3acf7e"/><stop offset="100%" stop-color="#ffaa00"/></linearGradient>
+            <linearGradient id="g4" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#ffaa00"/><stop offset="100%" stop-color="#ef3124"/></linearGradient>
+          </defs>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <h1>Cascade</h1>
+        <span class="brand-tagline">генератор приложений из БТ → ФТ → код</span>
+      </div>
     </div>
-    <div class="health" id="health">…</div>
+    <div class="topbar-actions">
+      <button id="settings-btn" class="icon-btn" title="Настройки моделей" aria-label="Настройки">⚙</button>
+      <div class="health" id="health">…</div>
+    </div>
   </header>
 
   <main class="layout">
@@ -21,35 +41,35 @@
       <h2>Вход</h2>
 
       <label class="field">
-        <span class="label-text">📋 Шаблон задания</span>
+        <span class="label-text">Шаблон задания</span>
         <select id="preset-select">
           <option value="">— своё задание —</option>
         </select>
       </label>
 
       <label class="field">
-        <span class="label-text">🎯 Бизнес-требования (БТ) <em>required</em></span>
+        <span class="label-text">Бизнес-требования (БТ) <em>required</em></span>
         <textarea id="bt" rows="8" placeholder="| ID | Требование | Обязательность |&#10;|----|-----------|---------------|&#10;| БТ-01 | ... | Обязательное |"></textarea>
       </label>
 
       <label class="field">
-        <span class="label-text">🔄 Бизнес-процесс (БП) <em>required</em></span>
+        <span class="label-text">Бизнес-процесс (БП) <em>required</em></span>
         <textarea id="bp" rows="8" placeholder="Актор: Пользователь&#10;&#10;Основной поток:&#10;1. ...&#10;2. ..."></textarea>
       </label>
 
       <label class="field">
-        <span class="label-text">✨ Features (опционально)</span>
+        <span class="label-text">Features (опционально)</span>
         <textarea id="features" rows="5" placeholder="- Тёмная тема&#10;- Все надписи на русском&#10;- ..."></textarea>
       </label>
 
       <fieldset class="field options">
-        <legend class="label-text">⚙️ Опции пайплайна</legend>
+        <legend class="label-text">Опции пайплайна</legend>
         <label><input type="checkbox" id="opt-skip-uc"> Пропустить юз-кейсы</label>
         <label><input type="checkbox" id="opt-skip-tests"> Пропустить тесты</label>
       </fieldset>
 
-      <button id="generate-btn" class="primary-btn">⚡ Сгенерировать</button>
-      <p class="hint">Полный прогон ~4–5 минут · ~$0.09 за один</p>
+      <button id="generate-btn" class="primary-btn">Сгенерировать</button>
+      <p class="hint" id="cost-hint">Полный прогон ~3–5 минут</p>
     </section>
 
     <!-- RIGHT: progress + output -->
@@ -80,8 +100,39 @@
     </section>
   </main>
 
+  <!-- Settings modal -->
+  <div id="settings-modal" class="modal" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-card">
+      <header class="modal-head">
+        <h3>Модели</h3>
+        <button class="icon-btn" id="settings-close" aria-label="Закрыть">×</button>
+      </header>
+      <div class="modal-body">
+        <p class="modal-hint">Выбор применяется к следующей генерации. Изменения сохраняются локально в браузере.</p>
+
+        <label class="field">
+          <span class="label-text">⚡ Fast — для документации (use cases, НФТ, тесты, README)</span>
+          <select id="model-fast"></select>
+          <span class="model-meta" id="model-fast-meta"></span>
+        </label>
+
+        <label class="field">
+          <span class="label-text">🧠 Smart — для ФТ и кода</span>
+          <select id="model-smart"></select>
+          <span class="model-meta" id="model-smart-meta"></span>
+        </label>
+
+        <div class="modal-actions">
+          <button class="secondary-btn" id="model-reset">Сбросить к дефолтам</button>
+          <button class="primary-btn modal-save" id="settings-save">Сохранить</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <footer class="footer">
-    <code>python -m ui</code> · Gemini 2.5 Flash + Pro · cascade БТ → ФТ → код → тесты → README
+    <code>python -m ui</code> · OpenRouter · cascade БТ → ФТ → код → тесты → README
   </footer>
 
   <script src="/static/app.js"></script>

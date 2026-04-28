@@ -42,7 +42,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from generator.config import Config
+from generator.config import Config, models_for_provider
 from generator.io_utils import TaskInput, clean_output, write_text
 from generator.pipeline import run_pipeline
 
@@ -87,6 +87,9 @@ class GenerateRequest(BaseModel):
     features: Optional[str] = None
     skip_use_cases: bool = False
     skip_tests: bool = False
+    # Live model overrides — let the user pick from UI dropdowns
+    model_fast: Optional[str] = None
+    model_smart: Optional[str] = None
 
 
 # ---------- app ----------
@@ -168,9 +171,15 @@ async def create_job(req: GenerateRequest) -> JSONResponse:
         write_text(input_dir / "features.md", req.features)
 
     cfg = Config.load()
+    overrides: dict[str, str] = {}
+    if req.model_fast:
+        overrides["fast"] = req.model_fast
+    if req.model_smart:
+        overrides["smart"] = req.model_smart
+
     threading.Thread(
         target=_run_job_thread,
-        args=(job, cfg, input_dir, output_dir, req.skip_use_cases, req.skip_tests),
+        args=(job, cfg, input_dir, output_dir, req.skip_use_cases, req.skip_tests, overrides),
         daemon=True,
     ).start()
 
@@ -184,6 +193,7 @@ def _run_job_thread(
     output_dir: Path,
     skip_use_cases: bool,
     skip_tests: bool,
+    model_overrides: Optional[dict[str, str]] = None,
 ) -> None:
     """Run pipeline in a background thread, push events into the job's queue."""
     job.status = "running"
@@ -205,6 +215,7 @@ def _run_job_thread(
             skip_use_cases=skip_use_cases,
             skip_tests=skip_tests,
             on_event=push,
+            model_overrides=model_overrides or None,
         )
         job.status = "done"
     except Exception as e:
@@ -308,4 +319,15 @@ async def health() -> JSONResponse:
         "provider": cfg.provider,
         "model_fast": cfg.model_fast,
         "model_smart": cfg.model_smart,
+    })
+
+
+@app.get("/api/models")
+async def list_models() -> JSONResponse:
+    cfg = Config.load()
+    return JSONResponse({
+        "provider": cfg.provider,
+        "default_fast": cfg.model_fast,
+        "default_smart": cfg.model_smart,
+        "models": models_for_provider(cfg.provider),
     })

@@ -28,8 +28,19 @@ def _load_prompt(name: str) -> tuple[str, str]:
     return system, user
 
 
-def _resolve_model(cfg: Config, step: str) -> str:
+def _resolve_model(cfg: Config, step: str, overrides: Optional[dict[str, str]] = None) -> str:
+    """Pick the model for a given step.
+
+    overrides may contain:
+        {"fast": "...", "smart": "..."}  — tier overrides
+        {"<step_name>": "..."}            — per-step override (takes precedence)
+    """
+    overrides = overrides or {}
+    if step in overrides and overrides[step]:
+        return overrides[step]
     tier = STEP_MODELS.get(step, "fast")
+    if tier in overrides and overrides[tier]:
+        return overrides[tier]
     return cfg.model_smart if tier == "smart" else cfg.model_fast
 
 
@@ -47,12 +58,14 @@ def _strip_code_fences(text: str) -> str:
 
 # ---------- individual steps ----------
 
-def step_use_cases(client: LLMClient, task: TaskInput) -> str:
+def step_use_cases(
+    client: LLMClient, task: TaskInput, overrides: Optional[dict[str, str]] = None
+) -> str:
     system, user_tpl = _load_prompt("use_cases")
     user = user_tpl.replace("{context}", task.as_context())
     text = client.generate(
         step="use_cases",
-        model=_resolve_model(client.cfg, "use_cases"),
+        model=_resolve_model(client.cfg, "use_cases", overrides),
         system=system,
         user=user,
         temperature=0.3,
@@ -61,12 +74,14 @@ def step_use_cases(client: LLMClient, task: TaskInput) -> str:
     return _strip_code_fences(text)
 
 
-def step_nfr(client: LLMClient, task: TaskInput) -> str:
+def step_nfr(
+    client: LLMClient, task: TaskInput, overrides: Optional[dict[str, str]] = None
+) -> str:
     system, user_tpl = _load_prompt("nfr")
     user = user_tpl.replace("{context}", task.as_context())
     text = client.generate(
         step="nfr",
-        model=_resolve_model(client.cfg, "nfr"),
+        model=_resolve_model(client.cfg, "nfr", overrides),
         system=system,
         user=user,
         temperature=0.4,
@@ -76,7 +91,8 @@ def step_nfr(client: LLMClient, task: TaskInput) -> str:
 
 
 def step_fr(
-    client: LLMClient, task: TaskInput, use_cases: str, nfr: str
+    client: LLMClient, task: TaskInput, use_cases: str, nfr: str,
+    overrides: Optional[dict[str, str]] = None,
 ) -> str:
     system, user_tpl = _load_prompt("fr")
     user = (
@@ -87,7 +103,7 @@ def step_fr(
     )
     text = client.generate(
         step="fr",
-        model=_resolve_model(client.cfg, "fr"),
+        model=_resolve_model(client.cfg, "fr", overrides),
         system=system,
         user=user,
         temperature=0.3,
@@ -102,6 +118,7 @@ def step_code(
     use_cases: str,
     nfr: str,
     fr: str,
+    overrides: Optional[dict[str, str]] = None,
 ) -> dict[str, str]:
     system, user_tpl = _load_prompt("code")
     user = (
@@ -113,7 +130,7 @@ def step_code(
     )
     text = client.generate(
         step="code",
-        model=_resolve_model(client.cfg, "code"),
+        model=_resolve_model(client.cfg, "code", overrides),
         system=system,
         user=user,
         temperature=0.4,
@@ -129,7 +146,8 @@ def step_code(
 
 
 def step_tests(
-    client: LLMClient, fr: str, code_files: dict[str, str]
+    client: LLMClient, fr: str, code_files: dict[str, str],
+    overrides: Optional[dict[str, str]] = None,
 ) -> dict[str, str]:
     # Build a lightweight listing of generated source code (paths + first ~40 lines)
     listing_parts = []
@@ -148,7 +166,7 @@ def step_tests(
     )
     text = client.generate(
         step="tests",
-        model=_resolve_model(client.cfg, "tests"),
+        model=_resolve_model(client.cfg, "tests", overrides),
         system=system,
         user=user,
         temperature=0.3,
@@ -162,6 +180,7 @@ def step_readme(
     task: TaskInput,
     code_files: dict[str, str],
     test_files: dict[str, str],
+    overrides: Optional[dict[str, str]] = None,
 ) -> str:
     file_list = "\n".join(f"- `{p}`" for p in sorted(code_files))
     test_list = "\n".join(f"- `{p}`" for p in sorted(test_files)) or "(тесты не сгенерированы)"
@@ -174,7 +193,7 @@ def step_readme(
     )
     text = client.generate(
         step="readme",
-        model=_resolve_model(client.cfg, "readme"),
+        model=_resolve_model(client.cfg, "readme", overrides),
         system=system,
         user=user,
         temperature=0.3,
@@ -193,11 +212,16 @@ def run_pipeline(
     skip_use_cases: bool = False,
     skip_tests: bool = False,
     on_event: Optional[ProgressCallback] = None,
+    model_overrides: Optional[dict[str, str]] = None,
 ) -> dict[str, object]:
     """Run the full cascade. Returns a small report dict.
 
     on_event(payload): optional callback fired at each step with payload like:
         {type: "start" | "step_start" | "step_done" | "done", step?, index?, total?, ...}
+
+    model_overrides: optional per-tier or per-step model overrides, e.g.
+        {"fast": "qwen/qwen-2.5-7b-instruct", "smart": "deepseek/deepseek-chat-v3-0324"}
+        or {"code": "anthropic/claude-3.5-haiku"} for fine-grained control.
     """
 
     def emit(event_type: str, **payload: Any) -> None:
@@ -210,8 +234,12 @@ def run_pipeline(
     log.info("Loading input from %s", input_dir)
     task = load_task(input_dir)
     total_steps = 6 - int(skip_use_cases) - int(skip_tests)
+
+    # Resolve effective models for telemetry
+    effective_fast = (model_overrides or {}).get("fast", cfg.model_fast)
+    effective_smart = (model_overrides or {}).get("smart", cfg.model_smart)
     emit("start", task=task.name, total=total_steps,
-         provider=cfg.provider, model_fast=cfg.model_fast, model_smart=cfg.model_smart)
+         provider=cfg.provider, model_fast=effective_fast, model_smart=effective_smart)
 
     log.info("Cleaning output dir %s", output_dir)
     clean_output(output_dir)
@@ -231,28 +259,28 @@ def run_pipeline(
         use_cases = ""
         if not skip_use_cases:
             begin("use_cases")
-            use_cases = step_use_cases(client, task)
+            use_cases = step_use_cases(client, task, model_overrides)
             write_text(output_dir / "docs" / "use-cases.md", use_cases)
             emit("step_done", step="use_cases", chars=len(use_cases),
                  path="docs/use-cases.md")
 
         # 2. NFR
         begin("nfr")
-        nfr = step_nfr(client, task)
+        nfr = step_nfr(client, task, model_overrides)
         write_text(output_dir / "docs" / "non-functional-req.md", nfr)
         emit("step_done", step="nfr", chars=len(nfr),
              path="docs/non-functional-req.md")
 
         # 3. FR (with traceability to BT, UC, Features)
         begin("fr")
-        fr = step_fr(client, task, use_cases, nfr)
+        fr = step_fr(client, task, use_cases, nfr, model_overrides)
         write_text(output_dir / "docs" / "functional-req.md", fr)
         emit("step_done", step="fr", chars=len(fr),
              path="docs/functional-req.md")
 
         # 4. Source code
         begin("code")
-        code_files = step_code(client, task, use_cases, nfr, fr)
+        code_files = step_code(client, task, use_cases, nfr, fr, model_overrides)
         write_files(output_dir, code_files)
         log.info("    wrote %d source files", len(code_files))
         emit("step_done", step="code", file_count=len(code_files),
@@ -262,7 +290,7 @@ def run_pipeline(
         test_files: dict[str, str] = {}
         if not skip_tests:
             begin("tests")
-            test_files = step_tests(client, fr, code_files)
+            test_files = step_tests(client, fr, code_files, model_overrides)
             write_files(output_dir, test_files)
             log.info("    wrote %d test files", len(test_files))
             emit("step_done", step="tests", file_count=len(test_files),
@@ -270,7 +298,7 @@ def run_pipeline(
 
         # 6. README
         begin("readme")
-        readme = step_readme(client, task, code_files, test_files)
+        readme = step_readme(client, task, code_files, test_files, model_overrides)
         write_text(output_dir / "README.md", readme)
         emit("step_done", step="readme", chars=len(readme), path="README.md")
 

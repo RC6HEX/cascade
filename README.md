@@ -1,175 +1,241 @@
-# Автономная команда разработки ПО
+# Cascade
 
-Генератор приложений по бизнес-требованиям. Принимает на вход БТ + БП + Features (опц.), на выходе выдаёт готовое веб-приложение с документацией и тестами.
+> Автономная команда разработки ПО. На входе — бизнес-требования и бизнес-процесс. На выходе — рабочее веб-приложение, документация, тесты.
 
-## Что делает
-
-Каскад артефактов:
+Pipeline:
 
 ```
 БТ + БП + Features
-  → Use Cases (юз-кейсы)
-  → НФТ (нефункциональные требования)
-  → ФТ (функциональные требования с трассировкой к БТ/UC/Features)
-  → Исходный код (HTML + CSS + Vanilla JS, модульный)
-  → Тесты (Vitest)
-  → README
+   ↓
+Use Cases  →  НФТ  →  ФТ  →  Код  →  Тесты  →  README
+   (с трассировкой ID между уровнями)
 ```
 
-Каждый ниже-уровневый артефакт ссылается на источники из верхнего уровня.
+Каждый артефакт нижнего уровня ссылается на источник из верхнего: `ФТ-04` → `БТ-04`. Это и есть «каскад».
 
-## Стек
+---
 
-- **Генератор:** Python 3.11+, httpx, dotenv
-- **LLM-провайдер:** Google Gemini API (по умолчанию) или OpenRouter
-- **Модели:** `gemini-2.5-flash` (документация) + `gemini-2.5-pro` (ФТ и код)
-- **Стек генерируемого приложения:** HTML5 + CSS + Vanilla JavaScript ESM (без сборки, без зависимостей)
-- **Тесты приложения:** Vitest + happy-dom
-
-## Требования
-
-- Python 3.11+
-- API-ключ Google Gemini (https://aistudio.google.com/apikey) **или** OpenRouter (https://openrouter.ai/keys)
-- (опц.) Node.js 18+ для запуска тестов сгенерированного приложения
-
-## Установка
+## Быстрый старт (3 команды)
 
 ```bash
-# 1. Клонируем репозиторий
-git clone <repo>
-cd autonomous-team
-
-# 2. Создаём виртуальное окружение
-python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# Linux/macOS:
-source .venv/bin/activate
-
-# 3. Зависимости
-pip install -r requirements.txt
-
-# 4. Настраиваем .env
-copy .env.example .env
-# открыть .env и вставить GEMINI_API_KEY
+git clone https://github.com/<USER>/cascade.git
+cd cascade
+bash install.sh           # на Windows: powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-## Запуск
+Затем открой `.env` и впиши свой ключ от OpenRouter:
 
-Есть **два режима** — CLI (для пакетной генерации) и веб-интерфейс (для интерактива и демо).
+```ini
+OPENROUTER_API_KEY=sk-or-v1-...
+```
 
-### 🌐 Веб-интерфейс
+Получить ключ: <https://openrouter.ai/keys> (есть free-tier).
+
+И запусти веб-интерфейс:
 
 ```bash
-python -m ui                        # http://127.0.0.1:8000
-python -m ui --port 9000 --reload   # другой порт + auto-reload
+# Linux / macOS
+.venv/bin/python -m ui
+
+# Windows
+.venv\Scripts\python.exe -m ui
 ```
 
-Что умеет:
+Открой в браузере: <http://127.0.0.1:8000>
 
-- Подгружает 3 готовых пресета (Task A / B / C) одним кликом
-- Принимает БТ + БП + Features текстом — без файлов
-- Показывает **прогресс по шагам** в реальном времени через Server-Sent Events: каждый шаг — карточка с цветовой индикацией (running / done / error / skipped) и таймингом
-- После генерации — дерево всех файлов с превью и **скачиванием в ZIP**
-- Health-индикатор LLM-провайдера и моделей в шапке
+---
 
-### 💻 CLI
+## Что в веб-интерфейсе
+
+- **3 готовых пресета** (Веб-калькулятор / Таск-трекер / Конвертер валют) — нажми и БТ/БП/Features подгрузятся одним кликом.
+- **Свободный ввод** — три текстовых поля для своих БТ/БП/Features.
+- **Live-прогресс через SSE**: 6 шагов пайплайна обновляются в реальном времени, видишь время каждого шага.
+- **Settings (⚙)**: меняй модели на лету — отдельно для дешёвых шагов (документация) и для тяжёлых (код, ФТ). Выбор сохраняется в браузере.
+- **Файловое дерево** с превью и **скачиванием в ZIP** после генерации.
+
+---
+
+## Как пользоваться без UI (CLI)
 
 ```bash
-python -m generator --task task_a   # Веб-калькулятор
-python -m generator --task task_b   # Таск-трекер
-python -m generator --task task_c   # Конвертер валют
+# Готовые задания
+python -m generator --task task_a    # калькулятор
+python -m generator --task task_b    # таск-трекер
+python -m generator --task task_c    # конвертер валют
+
+# Своё задание
+python -m generator \
+  --input ./input/my_task \
+  --output ./output/my_task
+
+# С другими моделями
+python -m generator --task task_b \
+  --model-fast "qwen/qwen-2.5-7b-instruct" \
+  --model-smart "deepseek/deepseek-chat-v3-0324"
 ```
 
-Результат окажется в `output/task_a/`, `output/task_b/`, `output/task_c/` соответственно.
+Для своего задания создай папку `input/my_task/` и положи туда:
 
-### Своё задание
-
-Создай папку `input/my_task/` и положи туда:
 - `business_requirements.md` (обязательно)
 - `business_process.md` (обязательно)
-- `features.md` (опционально)
+- `features.md` (опционально — UI-стиль, ограничения, название)
 
-Запусти:
+---
 
-```bash
-python -m generator --input ./input/my_task --output ./output/my_task
+## Поддерживаемые модели через OpenRouter
+
+Все они уже есть в дропдауне Settings. Цены — за 1M токенов вход / выход.
+
+| ID | Применение | Контекст | $ in / out |
+|---|---|---|---|
+| `deepseek/deepseek-chat-v3-0324` | Дефолт **smart** (код, ФТ) | 64K | 0.27 / 1.10 |
+| `deepseek/deepseek-r1` | Reasoning (логика, граничные случаи) | 64K | 0.55 / 2.19 |
+| `qwen/qwen-2.5-72b-instruct` | Дефолт **fast** (документация) | 32K | 0.13 / 0.40 |
+| `qwen/qwen-2.5-7b-instruct` | Стресс-тест на слабой модели | 32K | 0.04 / 0.10 |
+| `qwen/qwen-2.5-coder-32b-instruct` | Заточен под код | 32K | 0.07 / 0.16 |
+| `meta-llama/llama-3.3-70b-instruct` | Универсальная Meta LLM | 128K | 0.13 / 0.40 |
+| `meta-llama/llama-3.2-3b-instruct` | Самая мелкая, для отладки пайплайна | 128K | 0.02 / 0.04 |
+| `mistralai/mistral-small-3.2-24b-instruct` | Компактная и быстрая | 96K | 0.10 / 0.30 |
+| `minimax/minimax-01` | 1M контекст — для больших БТ | 1M | 0.20 / 1.10 |
+| `google/gemini-2.5-flash` | Хороший баланс | 1M | 0.30 / 2.50 |
+| `google/gemini-2.5-pro` | Максимальное качество | 1M | 1.25 / 10.00 |
+| `anthropic/claude-3.5-haiku` | Стабильно, но дороже | 200K | 0.80 / 4.00 |
+
+> Технически работает любой OpenRouter-совместимый ID — впиши в `.env` (`MODEL_FAST=...`, `MODEL_SMART=...`) или передай через `--model-fast/--model-smart`. UI просто выводит этот список как удобный.
+
+**Стоимость одного полного прогона** (6 шагов, ~25K input + 30K output tokens) — ориентир:
+
+- DeepSeek V3 + Qwen 72B (дефолт): ~$0.05
+- Llama 3.3 70B + Qwen 7B: ~$0.02
+- Gemini Pro + Flash: ~$0.30
+- Claude Haiku + Mistral Small: ~$0.15
+
+---
+
+## Структура артефактов на выходе
+
+```
+output/<task>/
+├── docs/
+│   ├── use-cases.md            # юз-кейсы со ссылками на БТ
+│   ├── non-functional-req.md   # НФТ с измеримыми критериями
+│   └── functional-req.md       # ФТ со ссылками БТ → UC → ФТ
+├── src/
+│   ├── index.html              # точка входа
+│   ├── styles.css              # стили
+│   ├── app.js                  # bootstrap
+│   └── <feature>.js            # модули по фичам
+├── tests/
+│   └── *.test.js               # Vitest unit-тесты
+├── package.json                # для npm test
+├── README.md                   # инструкция к сгенерированному приложению
+└── _generator_log.md           # учёт токенов и моделей
 ```
 
-### Дополнительные опции
+---
 
-```bash
-python -m generator --task task_a --no-tests          # без тестов
-python -m generator --task task_a --no-use-cases      # без юз-кейсов
-python -m generator --task task_a --provider openrouter
-python -m generator --task task_a -v                  # verbose
-```
-
-## Структура проекта
+## Архитектура генератора
 
 ```
-autonomous-team/
-├── generator/                     # Сам генератор (Python)
-│   ├── __main__.py                # CLI entry
-│   ├── config.py                  # Конфиг + модели
-│   ├── llm.py                     # Обёртка над Gemini / OpenRouter
-│   ├── parser.py                  # Парсер multi-file output
-│   ├── io_utils.py                # Чтение/запись артефактов
-│   ├── pipeline.py                # Каскад: БТ → ... → код
-│   └── prompts/                   # Промпты к LLM
-│       ├── use_cases.md
-│       ├── nfr.md
-│       ├── fr.md
-│       ├── code.md
-│       ├── tests.md
-│       └── readme.md
+cascade/
+├── generator/
+│   ├── __main__.py             # CLI: python -m generator
+│   ├── config.py               # .env, реестр моделей
+│   ├── llm.py                  # обёртка Gemini / OpenRouter + retry
+│   ├── parser.py               # парсер multi-file LLM output
+│   ├── pipeline.py             # каскад БТ → ФТ → код
+│   ├── io_utils.py             # чтение/запись артефактов
+│   └── prompts/                # системные промпты с персонами
+│       ├── use_cases.md        # «Senior Business Analyst, 15 лет опыта…»
+│       ├── nfr.md              # «Solution Architect…»
+│       ├── fr.md               # «техлид + системный аналитик…»
+│       ├── code.md             # «Senior Frontend Engineer L7…»
+│       ├── tests.md            # «QA-инженер, ломает прод раньше юзеров…»
+│       └── readme.md           # «технический писатель…»
+├── ui/
+│   ├── __main__.py             # запуск: python -m ui
+│   ├── server.py               # FastAPI + SSE
+│   └── static/                 # HTML / CSS / JS фронтенда
 ├── input/
-│   ├── task_a/                    # Веб-калькулятор: БТ, БП, features
-│   ├── task_b/                    # Таск-трекер
-│   └── task_c/                    # Конвертер валют
-├── output/                        # Результат генерации (gitignored)
-│   └── task_a/
-│       ├── docs/
-│       │   ├── use-cases.md
-│       │   ├── non-functional-req.md
-│       │   └── functional-req.md
-│       ├── src/                   # Код приложения
-│       ├── tests/                 # Vitest тесты
-│       ├── package.json
-│       ├── README.md
-│       └── _generator_log.md      # Логи и токены
-├── .env                           # ключи (gitignored)
-├── .env.example
+│   ├── task_a/                 # калькулятор
+│   ├── task_b/                 # таск-трекер
+│   └── task_c/                 # конвертер валют
+├── install.sh / install.ps1
 ├── requirements.txt
+├── .env.example
 └── README.md
 ```
 
-## Стоимость одного прогона
+### Ключевые архитектурные решения
 
-С моделями по умолчанию (`gemini-2.5-flash` для лёгких шагов + `gemini-2.5-pro` для ФТ и кода):
+- **Без LangChain / CrewAI**. Pipeline линейный, контроль над промптами и retry важнее «магии» агентов.
+- **Multi-file output через markdown-маркеры** (`### FILE: path/to/file`). Гарантирует чистое разделение, никаких JSON-escape проблем при генерации кода.
+- **Per-step model selection**. Текстовые шаги — на дешёвой модели, кодогенерация и ФТ — на сильной. Можно переопределить через UI или CLI без рестарта.
+- **Стабильность через retry с экспоненциальным бэкоффом** (см. `llm.py`). LLM может временно вернуть пустой ответ — клиент повторит до 3 раз.
+- **Персоны в промптах**. Каждый шаг — отдельный «эксперт» с кодексом правил. Это резко поднимает качество: модель пишет ФТ как продакт, код как сеньор, тесты как параноидальный QA.
+- **Жёсткие чек-листы в промптах**: «перед отправкой проверь что у каждого ФТ есть Источник», «не пиши число с запятой в `<input type=number>`», и т.п. Это правит конкретные баги, найденные на ранних прогонах.
 
-- ~6 LLM-вызовов
-- ~13 000 input tokens, ~14 000 output tokens
-- **~$0.09 за полный прогон**
+---
 
-Можно сменить модели через `MODEL_FAST` / `MODEL_SMART` в `.env`.
+## Endpoints веб-сервера
 
-## Архитектурные решения
+| Метод | Путь | Описание |
+|---|---|---|
+| `GET` | `/` | UI |
+| `GET` | `/api/health` | статус и текущие модели |
+| `GET` | `/api/presets` | список пресетов A/B/C |
+| `GET` | `/api/preset/{name}` | контент БТ+БП+Features пресета |
+| `GET` | `/api/models` | реестр моделей для дропдауна |
+| `POST` | `/api/jobs` | старт генерации, возвращает `{id}` |
+| `GET` | `/api/jobs/{id}/stream` | SSE-поток прогресса |
+| `GET` | `/api/jobs/{id}/files` | дерево файлов |
+| `GET` | `/api/jobs/{id}/file?path=` | содержимое файла |
+| `GET` | `/api/jobs/{id}/zip` | скачать всё как ZIP |
 
-- **Без LangChain/CrewAI.** Pipeline линейный, контроль над промптами и retry важнее «магии» агентов.
-- **Multi-file output через markdown-маркеры** (`### FILE: path/to/file`). Гарантирует чистое разделение, никаких JSON-escape проблем.
-- **Per-step model selection.** Текстовые шаги — на дешёвой Flash, кодогенерация и ФТ — на Pro.
-- **Сохранение артефактов между шагами** — каждый следующий шаг получает все предыдущие как контекст. Это и обеспечивает трассировку.
-- **Стабильность через retry с экспоненциальным бэкоффом** в `llm.py`.
+---
 
-## Что дальше (roadmap)
+## Требования
 
-- [x] Этап 1: сквозной прогон БТ → код (Задание A)
-- [x] Этап 2: документация + тесты (полный каскад)
-- [ ] Этап 3:
-  - [ ] Self-check цикл (валидация ФТ → регенерация)
-  - [ ] Refinement mode (короткий комментарий → точечные правки)
-  - [ ] CI на GitHub Actions
+- Python 3.11+ (тестировали на 3.13)
+- Любая OS: Linux, macOS, Windows
+- API-ключ от **OpenRouter** (или Gemini, если хочешь напрямую)
+- (Опционально) Node.js 18+ — только если хочешь запускать сгенерированные `npm test` тесты
+
+---
+
+## Альтернативный провайдер: прямой Gemini
+
+Если хочешь использовать Gemini API напрямую (минуя OpenRouter), в `.env`:
+
+```ini
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=AIzaSy...
+MODEL_FAST=gemini-2.5-flash
+MODEL_SMART=gemini-2.5-pro
+```
+
+Получить ключ: <https://aistudio.google.com/apikey>
+
+---
+
+## FAQ
+
+**Q: Как добавить свою модель в дропдаун?**
+A: Открой `generator/config.py`, добавь запись в `OPENROUTER_MODELS`, перезапусти сервер. Или просто впиши ID в `.env` (`MODEL_SMART=...`) — тогда она появится в дропдауне сверху.
+
+**Q: Что если генерация падает на половине?**
+A: Перезапусти. Pipeline идемпотентный, `output/<task>/` каждый раз очищается. Если падает повторно — посмотри в `output/<task>/_generator_log.md` и в логах сервера.
+
+**Q: Можно ли запускать без интернета?**
+A: Нет, все модели — облачные. Оффлайн-режим возможен только если поднимешь свой OpenRouter-совместимый прокси (например, через Ollama + LiteLLM).
+
+**Q: Есть ли self-check / refinement mode?**
+A: На roadmap. Сейчас pipeline — линейный одиночный проход. Self-check цикл (генерация → валидация → переделка) и режим точечных доработок — следующая итерация.
+
+**Q: Где спрятались мои API-ключи?**
+A: Только в `.env`. Файл в `.gitignore`. В коммиты не попадает. Если случайно закоммитил — отзови ключ и сгенерируй новый.
+
+---
 
 ## Лицензия
 

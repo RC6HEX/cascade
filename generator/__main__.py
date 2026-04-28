@@ -60,6 +60,14 @@ def main(argv: list[str] | None = None) -> int:
         choices=("gemini", "openrouter"),
         help="Override LLM provider (otherwise from .env)",
     )
+    parser.add_argument(
+        "--model-fast",
+        help="Override fast-tier model (use_cases / nfr / tests / readme)",
+    )
+    parser.add_argument(
+        "--model-smart",
+        help="Override smart-tier model (fr / code)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -93,6 +101,12 @@ def main(argv: list[str] | None = None) -> int:
     log.info("Input  : %s", input_dir)
     log.info("Output : %s", output_dir)
 
+    overrides: dict[str, str] = {}
+    if args.model_fast:
+        overrides["fast"] = args.model_fast
+    if args.model_smart:
+        overrides["smart"] = args.model_smart
+
     started = time.time()
     try:
         report = run_pipeline(
@@ -101,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
             output_dir=output_dir,
             skip_use_cases=args.no_use_cases,
             skip_tests=args.no_tests,
+            model_overrides=overrides or None,
         )
     except Exception as e:
         log.exception("Pipeline failed: %s", e)

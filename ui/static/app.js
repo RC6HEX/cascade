@@ -1,5 +1,5 @@
-// Frontend logic for the autonomous generator UI.
-// State machine: idle → submitting → running → done/error
+// Cascade — frontend logic.
+// Single-page app: load presets/models, run jobs, stream SSE progress, view files.
 
 const $ = (id) => document.getElementById(id);
 
@@ -17,26 +17,57 @@ const els = {
   fileTree: $('file-tree'),
   fileContent: $('file-content'),
   health: $('health'),
+  costHint: $('cost-hint'),
+
+  // settings modal
+  settingsBtn: $('settings-btn'),
+  settingsModal: $('settings-modal'),
+  settingsClose: $('settings-close'),
+  settingsSave: $('settings-save'),
+  modelFastSel: $('model-fast'),
+  modelSmartSel: $('model-smart'),
+  modelFastMeta: $('model-fast-meta'),
+  modelSmartMeta: $('model-smart-meta'),
+  modelReset: $('model-reset'),
 };
 
 let activeJobId = null;
 let activeES = null;
+let modelsCache = null;       // { provider, default_fast, default_smart, models: [...] }
+let userModelChoice = {};     // { fast, smart } from localStorage
+
+const LS_KEY = 'cascade.modelChoice';
 
 // ---------- init ----------
 
 (async function init() {
+  loadModelChoice();
   await loadHealth();
   await loadPresets();
+  await loadModels();
+
   els.preset.addEventListener('change', onPresetChange);
   els.generate.addEventListener('click', onGenerate);
   els.download.addEventListener('click', onDownload);
+
+  els.settingsBtn.addEventListener('click', openSettings);
+  els.settingsClose.addEventListener('click', closeSettings);
+  els.settingsModal.querySelector('.modal-backdrop').addEventListener('click', closeSettings);
+  els.settingsSave.addEventListener('click', saveSettings);
+  els.modelReset.addEventListener('click', resetModelChoice);
+  els.modelFastSel.addEventListener('change', () => updateModelMeta('fast'));
+  els.modelSmartSel.addEventListener('change', () => updateModelMeta('smart'));
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !els.settingsModal.hidden) closeSettings();
+  });
 })();
 
 async function loadHealth() {
   try {
     const r = await fetch('/api/health');
     const j = await r.json();
-    els.health.textContent = `${j.provider} · ${j.model_fast} + ${j.model_smart}`;
+    els.health.textContent = `${j.provider} · API готов`;
     els.health.classList.add('ok');
   } catch (e) {
     els.health.textContent = 'API недоступен';
@@ -56,6 +87,100 @@ async function loadPresets() {
     }
   } catch (e) {
     console.error('Failed to load presets', e);
+  }
+}
+
+async function loadModels() {
+  try {
+    const r = await fetch('/api/models');
+    modelsCache = await r.json();
+  } catch (e) {
+    console.error('Failed to load models', e);
+    return;
+  }
+  populateModelSelect(els.modelFastSel, 'fast');
+  populateModelSelect(els.modelSmartSel, 'smart');
+  updateModelMeta('fast');
+  updateModelMeta('smart');
+}
+
+function populateModelSelect(selectEl, tier) {
+  if (!modelsCache) return;
+  selectEl.innerHTML = '';
+  const chosen = userModelChoice[tier] || (tier === 'fast' ? modelsCache.default_fast : modelsCache.default_smart);
+  for (const m of modelsCache.models) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    const tierTag = m.tier === tier ? '✓ ' : '';
+    opt.textContent = `${tierTag}${m.label}  ($${m.price_in.toFixed(2)}/$${m.price_out.toFixed(2)} per M)`;
+    if (m.id === chosen) opt.selected = true;
+    selectEl.appendChild(opt);
+  }
+  // If chosen not in list (custom model), add as first option
+  if (!modelsCache.models.find(m => m.id === chosen)) {
+    const opt = document.createElement('option');
+    opt.value = chosen;
+    opt.textContent = chosen;
+    opt.selected = true;
+    selectEl.prepend(opt);
+  }
+}
+
+function updateModelMeta(tier) {
+  if (!modelsCache) return;
+  const sel = tier === 'fast' ? els.modelFastSel : els.modelSmartSel;
+  const meta = tier === 'fast' ? els.modelFastMeta : els.modelSmartMeta;
+  const id = sel.value;
+  const m = modelsCache.models.find(x => x.id === id);
+  if (m) {
+    meta.textContent = `${m.note} · контекст ${(m.context / 1000).toFixed(0)}K · $${m.price_in}/$${m.price_out} per M`;
+  } else {
+    meta.textContent = id;
+  }
+}
+
+function loadModelChoice() {
+  try {
+    userModelChoice = JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {};
+  } catch { userModelChoice = {}; }
+}
+
+function persistModelChoice() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(userModelChoice)); } catch {}
+}
+
+function openSettings() {
+  els.settingsModal.hidden = false;
+  // Re-sync selectors with current choice
+  if (modelsCache) {
+    populateModelSelect(els.modelFastSel, 'fast');
+    populateModelSelect(els.modelSmartSel, 'smart');
+    updateModelMeta('fast');
+    updateModelMeta('smart');
+  }
+}
+
+function closeSettings() {
+  els.settingsModal.hidden = true;
+}
+
+function saveSettings() {
+  userModelChoice = {
+    fast: els.modelFastSel.value,
+    smart: els.modelSmartSel.value,
+  };
+  persistModelChoice();
+  closeSettings();
+}
+
+function resetModelChoice() {
+  userModelChoice = {};
+  persistModelChoice();
+  if (modelsCache) {
+    populateModelSelect(els.modelFastSel, 'fast');
+    populateModelSelect(els.modelSmartSel, 'smart');
+    updateModelMeta('fast');
+    updateModelMeta('smart');
   }
 }
 
@@ -81,35 +206,40 @@ async function onGenerate() {
     return;
   }
 
-  // Reset UI state
   resetUI();
   els.generate.disabled = true;
   els.generate.textContent = 'Запускаю...';
-  // Mark skipped steps grey upfront
   if (els.skipUC.checked) markStep('use_cases', 'skipped');
   if (els.skipTests.checked) markStep('tests', 'skipped');
+
+  const payload = {
+    business_requirements: bt,
+    business_process: bp,
+    features: features || null,
+    skip_use_cases: els.skipUC.checked,
+    skip_tests: els.skipTests.checked,
+  };
+  if (userModelChoice.fast) payload.model_fast = userModelChoice.fast;
+  if (userModelChoice.smart) payload.model_smart = userModelChoice.smart;
 
   let jobId;
   try {
     const r = await fetch('/api/jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        business_requirements: bt,
-        business_process: bp,
-        features: features || null,
-        skip_use_cases: els.skipUC.checked,
-        skip_tests: els.skipTests.checked,
-      }),
+      body: JSON.stringify(payload),
     });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    if (!r.ok) {
+      const txt = await r.text();
+      throw new Error(`HTTP ${r.status}: ${txt.slice(0, 200)}`);
+    }
     const j = await r.json();
     jobId = j.id;
     activeJobId = jobId;
   } catch (e) {
     alert(`Не удалось стартовать: ${e}`);
     els.generate.disabled = false;
-    els.generate.textContent = 'Сгенерировать →';
+    els.generate.textContent = 'Сгенерировать';
     return;
   }
 
@@ -140,14 +270,14 @@ function attachStream(jobId) {
     const d = JSON.parse(e.data);
     setMeta({
       'Задача': d.task,
-      'Провайдер': `${d.provider} (${d.model_fast} + ${d.model_smart})`,
+      'Провайдер': d.provider,
+      'Модели': `fast=${d.model_fast.split('/').pop()} · smart=${d.model_smart.split('/').pop()}`,
       'Шагов': d.total,
     });
   });
 
   es.addEventListener('step_start', (e) => {
-    const d = JSON.parse(e.data);
-    markStep(d.step, 'running');
+    markStep(JSON.parse(e.data).step, 'running');
     stepStart = Date.now();
   });
 
@@ -173,16 +303,16 @@ function attachStream(jobId) {
   es.addEventListener('error', (e) => {
     let payload = {};
     try { payload = JSON.parse(e.data || '{}'); } catch {}
-    if (payload.error) {
-      const idx = +payload?.index;
-      if (idx) {
-        const step = els.steps[idx - 1];
-        if (step) step.classList.add('error');
+    if (payload && payload.error) {
+      // mark current running step as error
+      const running = document.querySelector('.steps li.running');
+      if (running) {
+        running.classList.remove('running');
+        running.classList.add('error');
       }
       els.meta.innerHTML = `<span style="color: var(--danger)">Ошибка: ${escapeHtml(payload.error)}</span>`;
       finishJob(jobId, true);
     }
-    // Native browser EventSource error (connection lost) → just log
   });
 
   es.addEventListener('stream_end', () => {
@@ -207,7 +337,7 @@ function setMeta(obj) {
 
 async function finishJob(jobId, isError = false) {
   els.generate.disabled = false;
-  els.generate.textContent = 'Сгенерировать →';
+  els.generate.textContent = 'Сгенерировать';
   if (isError) return;
   els.download.disabled = false;
   await loadFiles(jobId);
@@ -216,8 +346,8 @@ async function finishJob(jobId, isError = false) {
 function fileIcon(path) {
   if (path.endsWith('.html')) return '🌐';
   if (path.endsWith('.css')) return '🎨';
-  if (path.endsWith('.js')) return '📜';
   if (path.endsWith('.test.js')) return '🧪';
+  if (path.endsWith('.js')) return '📜';
   if (path.endsWith('.md')) {
     if (path.includes('functional-req')) return '📐';
     if (path.includes('non-functional')) return '⚡';
@@ -242,7 +372,6 @@ async function loadFiles(jobId) {
     li.addEventListener('click', () => selectFile(jobId, li));
     els.fileTree.appendChild(li);
   }
-  // Auto-select first file (preferably src/index.html)
   const auto = j.files.find((f) => f.path.endsWith('src/index.html'))
     || j.files.find((f) => f.path.endsWith('functional-req.md'))
     || j.files[0];
@@ -279,7 +408,6 @@ function escapeHtml(s) {
 }
 
 function cssEscape(s) {
-  // basic CSS attr selector escape
   return String(s).replace(/(["\\])/g, '\\$1');
 }
 
