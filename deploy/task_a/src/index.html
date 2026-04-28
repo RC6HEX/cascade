@@ -1,13 +1,56 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QuickCalc</title>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickCalc</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <main id="app-root"></main>
-    <script type="module" src="app.js"></script>
+  <main class="calculator-container">
+    <section class="calculator">
+      <header class="calculator-header">
+        <h1>QuickCalc</h1>
+      </header>
+      
+      <div class="calculator-display">
+        <input type="text" class="calculator-input" readonly aria-label="Поле ввода калькулятора">
+        <output class="calculator-result" aria-live="polite"></output>
+      </div>
+      
+      <div class="calculator-buttons">
+        <button class="calculator-button calculator-button--function" data-action="clear">C</button>
+        <button class="calculator-button calculator-button--function" data-action="clear-all">CE</button>
+        <button class="calculator-button calculator-button--operator" data-action="divide">÷</button>
+        <button class="calculator-button calculator-button--operator" data-action="multiply">×</button>
+        
+        <button class="calculator-button" data-action="number" data-value="7">7</button>
+        <button class="calculator-button" data-action="number" data-value="8">8</button>
+        <button class="calculator-button" data-action="number" data-value="9">9</button>
+        <button class="calculator-button calculator-button--operator" data-action="subtract">−</button>
+        
+        <button class="calculator-button" data-action="number" data-value="4">4</button>
+        <button class="calculator-button" data-action="number" data-value="5">5</button>
+        <button class="calculator-button" data-action="number" data-value="6">6</button>
+        <button class="calculator-button calculator-button--operator" data-action="add">+</button>
+        
+        <button class="calculator-button" data-action="number" data-value="1">1</button>
+        <button class="calculator-button" data-action="number" data-value="2">2</button>
+        <button class="calculator-button" data-action="number" data-value="3">3</button>
+        <button class="calculator-button calculator-button--equals" data-action="equals">=</button>
+        
+        <button class="calculator-button" data-action="number" data-value="0">0</button>
+        <button class="calculator-button" data-action="decimal">,</button>
+        <button class="calculator-button" data-action="backspace">←</button>
+      </div>
+    </section>
+    
+    <aside class="calculator-history">
+      <h2>История</h2>
+      <ul class="history-list" aria-live="polite"></ul>
+    </aside>
+  </main>
+
+  <script type="module" src="app.js"></script>
 </body>
 </html>

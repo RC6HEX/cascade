@@ -1,239 +1,294 @@
-import { addHistoryEntry } from './history.js';
-
-let displayElement;
-let buttonsContainer;
-let onHistoryUpdate;
-
-let firstOperand = null;
-let secondOperand = null;
-let currentOperation = null;
-let shouldResetDisplay = false;
-let isErrorState = false;
-
-const operations = {
-    '+': (a, b) => a + b,
-    '−': (a, b) => a - b,
-    '×': (a, b) => a * b,
-    '÷': (a, b) => {
-        if (b === 0) {
-            return 'error';
-        }
-        return a / b;
-    },
-};
-
 /**
- * @description Initializes the calculator module, sets up DOM elements and event listeners.
- * @param {HTMLElement} displayEl - The element to display output.
- * @param {HTMLElement} buttonsEl - The container for calculator buttons.
- * @param {Function} historyCallback - Callback to update history.
+ * Основной класс калькулятора, реализующий логику работы
+ * @implements ФТ-01
+ * @implements ФТ-02
+ * @implements ФТ-03
+ * @implements ФТ-04
+ * @implements ФТ-06
  */
-export function initCalculator(displayEl, buttonsEl, historyCallback) {
-    displayElement = displayEl;
-    buttonsContainer = buttonsEl;
-    onHistoryUpdate = historyCallback;
+export class Calculator {
+  constructor() {
+    this.currentInput = '';
+    this.previousInput = '';
+    this.operation = null;
+    this.shouldResetInput = false;
+    this.history = [];
+    this.maxHistoryItems = 10;
+    
+    this.inputElement = null;
+    this.resultElement = null;
+    this.historyListElement = null;
+  }
 
-    buttonsContainer.addEventListener('click', handleButtonClick);
-    document.addEventListener('keydown', handleKeyboardInput);
-    resetCalculator();
-}
+  init() {
+    this.cacheElements();
+    this.setupEventListeners();
+    this.updateDisplay();
+  }
 
-/**
- * @description Handles clicks on calculator buttons using event delegation.
- * @param {Event} event - The click event.
- */
-function handleButtonClick(event) {
-    const button = event.target.closest('button');
-    if (!button) return;
+  /**
+   * Кеширует DOM-элементы
+   */
+  cacheElements() {
+    this.inputElement = document.querySelector('.calculator-input');
+    this.resultElement = document.querySelector('.calculator-result');
+    this.historyListElement = document.querySelector('.history-list');
+  }
 
-    const { action, value } = button.dataset;
+  /**
+   * Настраивает обработчики событий для кнопок
+   */
+  setupEventListeners() {
+    document.querySelector('.calculator-buttons').addEventListener('click', (e) => {
+      const button = e.target.closest('.calculator-button');
+      if (!button) return;
 
-    if (isErrorState && action !== 'clear') return;
+      const action = button.dataset.action;
+      const value = button.dataset.value;
 
-    switch (action) {
+      switch (action) {
         case 'number':
-            appendNumber(value);
-            break;
+          this.appendNumber(value);
+          break;
         case 'decimal':
-            appendDecimal();
-            break;
-        case 'operator':
-            setOperation(value);
-            break;
+          this.appendDecimal();
+          break;
+        case 'add':
+        case 'subtract':
+        case 'multiply':
+        case 'divide':
+          this.setOperation(action);
+          break;
         case 'equals':
-            evaluate();
-            break;
+          this.calculate();
+          break;
         case 'clear':
-            resetCalculator();
-            break;
-        case 'toggle-sign':
-            toggleSign();
-            break;
-        case 'percent':
-            calculatePercent();
-            break;
+          this.clear();
+          break;
+        case 'clear-all':
+          this.clearAll();
+          break;
+        case 'backspace':
+          this.backspace();
+          break;
+      }
+
+      this.updateDisplay();
+    });
+  }
+
+  /**
+   * Добавляет цифру к текущему вводу
+   * @param {string} number - Цифра для добавления
+   */
+  appendNumber(number) {
+    if (this.shouldResetInput) {
+      this.currentInput = '';
+      this.shouldResetInput = false;
     }
-}
-
-/**
- * @description Handles keyboard input for calculator functionality.
- * Implements ФТ-09, ФТ-10.
- * @param {KeyboardEvent} event - The keydown event.
- */
-function handleKeyboardInput(event) {
-    if (isErrorState && event.key !== 'Escape') return;
-
-    if (event.key >= '0' && event.key <= '9') {
-        appendNumber(event.key);
-    } else if (event.key === '.') {
-        appendDecimal();
-    } else if (event.key === 'Enter' || event.key === '=') {
-        event.preventDefault();
-        evaluate();
-    } else if (event.key === 'Escape') {
-        resetCalculator();
-    } else if (event.key === 'Backspace') {
-        deleteLastChar();
-    } else if (['+', '-', '*', '/'].includes(event.key)) {
-        event.preventDefault();
-        const opMap = { '+': '+', '-': '−', '*': '×', '/': '÷' };
-        setOperation(opMap[event.key]);
-    }
-}
-
-/**
- * @description Appends a number to the current display value.
- * Implements ФТ-09.
- * @param {string} number - The number to append.
- */
-function appendNumber(number) {
-    if (displayElement.textContent === '0' || shouldResetDisplay) {
-        displayElement.textContent = number;
-        shouldResetDisplay = false;
+    
+    if (this.currentInput === '0') {
+      this.currentInput = number;
     } else {
-        displayElement.textContent += number;
+      this.currentInput += number;
     }
-}
+  }
 
-/**
- * @description Appends a decimal point if one doesn't already exist.
- */
-function appendDecimal() {
-    if (shouldResetDisplay) {
-        displayElement.textContent = '0.';
-        shouldResetDisplay = false;
-        return;
+  /**
+   * Добавляет десятичную точку к текущему вводу
+   */
+  appendDecimal() {
+    if (this.shouldResetInput) {
+      this.currentInput = '0';
+      this.shouldResetInput = false;
     }
-    if (!displayElement.textContent.includes('.')) {
-        displayElement.textContent += '.';
-    }
-}
-
-/**
- * @description Sets the arithmetic operation to be performed.
- * @param {string} op - The operator symbol ('+', '−', '×', '÷').
- */
-function setOperation(op) {
-    if (currentOperation !== null) {
-        evaluate();
-    }
-    firstOperand = parseFloat(displayElement.textContent);
-    currentOperation = op;
-    shouldResetDisplay = true;
-}
-
-/**
- * @description Resets the calculator to its initial state.
- * Implements ФТ-06.
- */
-function resetCalculator() {
-    displayElement.textContent = '0';
-    firstOperand = null;
-    secondOperand = null;
-    currentOperation = null;
-    shouldResetDisplay = false;
-    isErrorState = false;
-    displayElement.classList.remove('error');
-}
-
-/**
- * @description Deletes the last character from the display.
- * Implements ФТ-10.
- */
-function deleteLastChar() {
-    if (shouldResetDisplay) return;
-    displayElement.textContent = displayElement.textContent.slice(0, -1);
-    if (displayElement.textContent === '' || displayElement.textContent === '-') {
-        displayElement.textContent = '0';
-    }
-}
-
-/**
- * @description Toggles the sign of the current number on the display.
- */
-function toggleSign() {
-    if (displayElement.textContent !== '0') {
-        displayElement.textContent = (parseFloat(displayElement.textContent) * -1).toString();
-    }
-}
-
-/**
- * @description Calculates the percentage of the current number.
- */
-function calculatePercent() {
-    displayElement.textContent = (parseFloat(displayElement.textContent) / 100).toString();
-}
-
-/**
- * @description Performs the calculation and updates the display.
- * Implements ФТ-01, ФТ-02, ФТ-03, ФТ-04, ФТ-05, ФТ-07.
- */
-function evaluate() {
-    if (currentOperation === null || shouldResetDisplay) return;
     
-    secondOperand = parseFloat(displayElement.textContent);
-
-    const result = performCalculation(firstOperand, secondOperand, currentOperation);
-
-    if (result === 'error') {
-        handleError();
-        return;
-    }
-
-    const formattedResult = parseFloat(result.toPrecision(15));
-    displayElement.textContent = formattedResult;
+    if (this.currentInput.includes('.')) return;
     
-    const historyEntry = `${firstOperand} ${currentOperation} ${secondOperand} = ${formattedResult}`;
-    onHistoryUpdate(historyEntry);
-
-    firstOperand = formattedResult;
-    currentOperation = null;
-    shouldResetDisplay = true;
-}
-
-/**
- * @description Core calculation logic.
- * @param {number} a - First operand.
- * @param {number} b - Second operand.
- * @param {string} op - Operator.
- * @returns {number|string} The result or 'error'.
- */
-function performCalculation(a, b, op) {
-    if (op === '÷' && b === 0) {
-        return 'error';
+    if (this.currentInput === '') {
+      this.currentInput = '0';
     }
-    return operations[op](a, b);
-}
+    
+    this.currentInput += '.';
+  }
 
-/**
- * @description Handles the division by zero error state.
- * Implements ФТ-05.
- */
-function handleError() {
-    displayElement.textContent = 'Ошибка: деление на ноль';
-    displayElement.classList.add('error');
-    isErrorState = true;
-    firstOperand = null;
-    secondOperand = null;
-    currentOperation = null;
+  /**
+   * Устанавливает операцию для вычисления
+   * @param {string} operation - Операция (add, subtract, multiply, divide)
+   */
+  setOperation(operation) {
+    if (this.currentInput === '' && this.previousInput === '') return;
+    
+    if (this.previousInput !== '' && this.currentInput !== '') {
+      this.calculate();
+    }
+    
+    this.operation = operation;
+    this.previousInput = this.currentInput || this.previousInput;
+    this.currentInput = '';
+  }
+
+  /**
+   * Выполняет вычисление
+   */
+  calculate() {
+    if (this.operation === null || this.currentInput === '' || this.previousInput === '') return;
+    
+    const prev = parseFloat(this.previousInput);
+    const current = parseFloat(this.currentInput);
+    let result;
+    
+    try {
+      switch (this.operation) {
+        case 'add':
+          result = prev + current;
+          break;
+        case 'subtract':
+          result = prev - current;
+          break;
+        case 'multiply':
+          result = prev * current;
+          break;
+        case 'divide':
+          if (current === 0) {
+            throw new Error('Деление на ноль');
+          }
+          result = prev / current;
+          break;
+        default:
+          return;
+      }
+      
+      this.addToHistory(prev, current, this.operation, result);
+      this.currentInput = result.toString();
+      this.operation = null;
+      this.previousInput = '';
+      this.shouldResetInput = true;
+      this.clearError();
+    } catch (error) {
+      this.showError(error.message);
+    }
+  }
+
+  /**
+   * Очищает текущий ввод
+   */
+  clear() {
+    this.currentInput = '';
+    this.clearError();
+  }
+
+  /**
+   * Полностью сбрасывает калькулятор
+   */
+  clearAll() {
+    this.currentInput = '';
+    this.previousInput = '';
+    this.operation = null;
+    this.clearError();
+  }
+
+  /**
+   * Удаляет последний символ из текущего ввода
+   */
+  backspace() {
+    this.currentInput = this.currentInput.slice(0, -1);
+    if (this.currentInput === '') {
+      this.clearError();
+    }
+  }
+
+  /**
+   * Добавляет операцию в историю
+   * @param {number} num1 - Первое число
+   * @param {number} num2 - Второе число
+   * @param {string} operation - Операция
+   * @param {number} result - Результат
+   */
+  addToHistory(num1, num2, operation, result) {
+    const operationsMap = {
+      'add': '+',
+      'subtract': '−',
+      'multiply': '×',
+      'divide': '÷'
+    };
+    
+    const operationSymbol = operationsMap[operation];
+    const historyItem = {
+      expression: `${num1} ${operationSymbol} ${num2}`,
+      result: result
+    };
+    
+    this.history.unshift(historyItem);
+    
+    if (this.history.length > this.maxHistoryItems) {
+      this.history.pop();
+    }
+  }
+
+  /**
+   * Обновляет отображение калькулятора
+   */
+  updateDisplay() {
+    this.inputElement.value = this.currentInput || '0';
+    this.inputElement.classList.toggle('error', this.inputElement.classList.contains('error'));
+    
+    if (this.operation !== null) {
+      const operationsMap = {
+        'add': '+',
+        'subtract': '−',
+        'multiply': '×',
+        'divide': '÷'
+      };
+      this.resultElement.textContent = `${this.previousInput} ${operationsMap[this.operation]}`;
+    } else {
+      this.resultElement.textContent = '';
+    }
+    
+    this.updateHistoryDisplay();
+  }
+
+  /**
+   * Обновляет отображение истории
+   */
+  updateHistoryDisplay() {
+    this.historyListElement.innerHTML = '';
+    
+    this.history.forEach(item => {
+      const li = document.createElement('li');
+      li.className = 'history-item';
+      
+      const expressionSpan = document.createElement('span');
+      expressionSpan.className = 'history-expression';
+      expressionSpan.textContent = item.expression;
+      
+      const resultSpan = document.createElement('span');
+      resultSpan.className = 'history-result';
+      resultSpan.textContent = item.result.toLocaleString('ru-RU');
+      
+      li.appendChild(expressionSpan);
+      li.appendChild(resultSpan);
+      this.historyListElement.appendChild(li);
+    });
+  }
+
+  /**
+   * Показывает сообщение об ошибке
+   * @param {string} message - Текст ошибки
+   */
+  showError(message) {
+    this.currentInput = message;
+    this.inputElement.classList.add('error');
+    this.shouldResetInput = true;
+  }
+
+  /**
+   * Сбрасывает состояние ошибки
+   */
+  clearError() {
+    if (this.inputElement.classList.contains('error')) {
+      this.inputElement.classList.remove('error');
+      this.currentInput = '';
+    }
+  }
 }

@@ -3,156 +3,269 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Автономная команда — демки</title>
+  <title>Cascade — демо сгенерированных приложений</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%237c5cff' d='M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z'/%3E%3C/svg%3E">
   <style>
     :root {
-      --bg: #0f0f10;
-      --fg: #f5f5f5;
-      --muted: #9aa0a6;
-      --card: #1a1a1d;
-      --border: #2a2a2f;
-      --accent: #ef3124;
-      --accent-2: #c2ff3a;
+      --bg: #08080d;
+      --bg-2: #14141f;
+      --bg-3: #1c1c2a;
+      --border: #232333;
+      --fg: #f5f5fa;
+      --fg-2: #c2c2d4;
+      --muted: #7a7a92;
+      --accent: #7c5cff;
+      --accent-2: #3a86ff;
+      --accent-3: #3acf7e;
+      --gradient: linear-gradient(135deg, #7c5cff 0%, #3a86ff 100%);
+      --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
     body {
       background: var(--bg);
+      background-image:
+        radial-gradient(ellipse 100% 60% at 50% -20%, rgba(124, 92, 255, 0.18), transparent 60%),
+        radial-gradient(ellipse 60% 50% at 100% 100%, rgba(58, 134, 255, 0.10), transparent 60%);
+      background-attachment: fixed;
       color: var(--fg);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
       min-height: 100vh;
-      padding: 48px 24px;
+      padding: 48px 24px 80px;
+      -webkit-font-smoothing: antialiased;
     }
     .wrap { max-width: 980px; margin: 0 auto; }
-    .header { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
-    .pill {
-      background: var(--accent-2);
-      color: #000;
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-weight: 700;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+
+    .header {
+      display: flex; align-items: center; gap: 14px; margin-bottom: 8px;
     }
-    h1 { font-size: 36px; margin: 0; }
-    p.lead { color: var(--muted); font-size: 16px; max-width: 720px; }
+    .logo {
+      width: 44px; height: 44px;
+      display: grid; place-items: center;
+      border-radius: 11px;
+      background: var(--bg-3);
+      border: 1px solid var(--border);
+      box-shadow: 0 0 32px rgba(124, 92, 255, 0.25);
+    }
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: var(--gradient);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle {
+      color: var(--muted);
+      margin: 6px 0 36px;
+      font-size: 15px;
+      max-width: 720px;
+    }
+    .subtitle code {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--accent);
+    }
+    .repo-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      margin-top: 8px;
+      padding: 7px 14px;
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--fg-2);
+      text-decoration: none;
+      font-size: 12px;
+      font-family: var(--mono);
+      transition: all 0.15s;
+    }
+    .repo-link:hover { border-color: var(--accent); color: var(--accent); }
 
     .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
-      margin-top: 32px;
+      margin-top: 36px;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 18px;
     }
+
     .card {
-      background: var(--card);
+      background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg) 100%);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 24px;
-      transition: transform 0.15s ease, border-color 0.15s ease;
+      border-radius: 14px;
+      padding: 22px 22px 18px;
+      display: flex; flex-direction: column;
+      gap: 14px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      position: relative;
+      overflow: hidden;
     }
-    .card:hover { transform: translateY(-2px); border-color: var(--accent); }
-    .card .num {
-      display: inline-block;
-      background: var(--accent-2);
-      color: #000;
-      width: 28px;
-      height: 28px;
-      border-radius: 6px;
-      font-weight: 700;
-      text-align: center;
-      line-height: 28px;
-      margin-bottom: 12px;
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 14px;
+      padding: 1px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, transparent 50%);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
     }
-    .card h2 { margin: 0 0 8px; font-size: 20px; }
-    .card .desc { color: var(--muted); font-size: 14px; min-height: 60px; }
-    .card .btn {
-      display: inline-block;
-      background: var(--accent);
-      color: #fff;
-      padding: 10px 16px;
+    .card h2 {
+      margin: 0; font-size: 17px; font-weight: 700;
+      letter-spacing: -0.2px;
+    }
+    .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .badge {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--bg-3);
+      color: var(--muted);
+    }
+    .badge.easy { background: rgba(58, 207, 126, 0.15); color: var(--accent-3); }
+    .badge.medium { background: rgba(58, 134, 255, 0.15); color: var(--accent-2); }
+    .badge.hard { background: rgba(124, 92, 255, 0.18); color: var(--accent); }
+
+    .desc { color: var(--fg-2); font-size: 13px; line-height: 1.55; }
+
+    .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
+    .links a {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 8px 12px;
+      background: var(--bg-3);
+      border: 1px solid var(--border);
       border-radius: 8px;
       text-decoration: none;
-      font-weight: 600;
-      margin-top: 12px;
-      margin-right: 8px;
-      font-size: 14px;
-    }
-    .card .btn.secondary {
-      background: transparent;
-      border: 1px solid var(--border);
       color: var(--fg);
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.15s;
     }
-    .card .btn:hover { opacity: 0.9; }
+    .links a:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(124, 92, 255, 0.08);
+    }
+    .links a.primary {
+      background: var(--gradient);
+      color: #fff;
+      border: none;
+      box-shadow: 0 4px 16px rgba(124, 92, 255, 0.3);
+    }
+    .links a.primary:hover {
+      box-shadow: 0 6px 24px rgba(124, 92, 255, 0.45);
+      color: #fff;
+    }
 
-    footer {
-      margin-top: 64px;
+    .footer {
+      margin-top: 60px;
       padding-top: 24px;
       border-top: 1px solid var(--border);
       color: var(--muted);
-      font-size: 13px;
+      font-size: 12px;
     }
-    code {
-      background: #000;
-      color: var(--accent-2);
-      padding: 2px 6px;
+    .footer code {
+      background: var(--bg-3);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
       border-radius: 4px;
-      font-size: 13px;
+      font-family: var(--mono);
+      color: var(--accent);
     }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="header">
-      <span class="pill">Альфа Будущее</span>
-      <span style="color: var(--muted); font-size: 14px;">Автономная команда разработки ПО</span>
+      <div class="logo">
+        <svg width="26" height="26" viewBox="0 0 24 24">
+          <rect x="2" y="2" width="8" height="8" rx="1.5" fill="url(#g1)"/>
+          <rect x="14" y="2" width="8" height="8" rx="1.5" fill="url(#g2)" opacity="0.7"/>
+          <rect x="2" y="14" width="8" height="8" rx="1.5" fill="url(#g3)" opacity="0.55"/>
+          <rect x="14" y="14" width="8" height="8" rx="1.5" fill="url(#g4)" opacity="0.4"/>
+          <defs>
+            <linearGradient id="g1" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#7c5cff"/><stop offset="100%" stop-color="#3a86ff"/></linearGradient>
+            <linearGradient id="g2" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#3a86ff"/><stop offset="100%" stop-color="#3acf7e"/></linearGradient>
+            <linearGradient id="g3" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#3acf7e"/><stop offset="100%" stop-color="#ffaa00"/></linearGradient>
+            <linearGradient id="g4" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#ffaa00"/><stop offset="100%" stop-color="#ef3124"/></linearGradient>
+          </defs>
+        </svg>
+      </div>
+      <h1>Cascade</h1>
     </div>
-    <h1>Генератор приложений по бизнес-требованиям</h1>
-    <p class="lead">
-      Каждая из этих демок сгенерирована автоматически из БТ + БП + Features.
-      Генератор сам построил юз-кейсы, НФТ, ФТ, исходный код и тесты.
-      Никакого ручного кода в <code>output/</code>.
+    <p class="subtitle">
+      Автономный генератор приложений по бизнес-требованиям. Эта страница — три приложения, <strong>сгенерированные генератором</strong> по входным БТ + БП. Запусти их прямо в браузере или зайди в исходники / документацию.
+      <br><br>
+      Запустить генератор у себя: <code>git clone</code> репо ниже → <code>bash install.sh</code> → впиши OpenRouter ключ → <code>python -m ui</code>.
     </p>
+    <a class="repo-link" href="https://github.com/RC6HEX/cascade" target="_blank" rel="noopener">
+      ⭐ github.com/RC6HEX/cascade
+    </a>
 
     <div class="grid">
-      <div class="card">
-        <div class="num">A</div>
-        <h2>QuickCalc</h2>
-        <div class="desc">
-          Веб-калькулятор. Базовые операции, обработка деления на ноль,
-          история последних 10 вычислений, ввод с клавиатуры.
+      <article class="card">
+        <h2>Веб-калькулятор</h2>
+        <div class="badges">
+          <span class="badge easy">простое</span>
+          <span class="badge">QuickCalc</span>
         </div>
-        <a class="btn" href="task_a/src/index.html">Запустить</a>
-        <a class="btn secondary" href="task_a/docs/functional-req.md">ФТ</a>
-      </div>
+        <div class="desc">
+          Базовые операции, обработка деления на ноль, история последних 10 вычислений, ввод с клавиатуры.
+        </div>
+        <div class="links">
+          <a class="primary" href="task_a/src/index.html">▶ Запустить</a>
+          <a href="task_a/README.md">README</a>
+          <a href="task_a/docs/functional-req.md">ФТ</a>
+          <a href="task_a/_generator_log.md">log</a>
+        </div>
+      </article>
 
-      <div class="card">
-        <div class="num">B</div>
-        <h2>TaskBoard</h2>
-        <div class="desc">
-          Канбан таск-трекер. Создание задач, drag-and-drop между статусами,
-          фильтры, сохранение в localStorage.
+      <article class="card">
+        <h2>Таск-трекер</h2>
+        <div class="badges">
+          <span class="badge medium">среднее</span>
+          <span class="badge">TaskBoard</span>
         </div>
-        <a class="btn" href="task_b/src/index.html">Запустить</a>
-        <a class="btn secondary" href="task_b/docs/functional-req.md">ФТ</a>
-      </div>
+        <div class="desc">
+          Канбан с тремя статусами, drag-and-drop, фильтрация и сохранение задач в localStorage.
+        </div>
+        <div class="links">
+          <a class="primary" href="task_b/src/index.html">▶ Запустить</a>
+          <a href="task_b/README.md">README</a>
+          <a href="task_b/docs/functional-req.md">ФТ</a>
+          <a href="task_b/_generator_log.md">log</a>
+        </div>
+      </article>
 
-      <div class="card">
-        <div class="num">C</div>
-        <h2>CurrencyX</h2>
-        <div class="desc">
-          Конвертер валют с курсами из открытого API. 12 валют, кеш в localStorage,
-          fallback при недоступности API.
+      <article class="card">
+        <h2>Конвертер валют</h2>
+        <div class="badges">
+          <span class="badge hard">сложное</span>
+          <span class="badge">CurrencyX</span>
         </div>
-        <a class="btn" href="task_c/src/index.html">Запустить</a>
-        <a class="btn secondary" href="task_c/docs/functional-req.md">ФТ</a>
-      </div>
+        <div class="desc">
+          12 валют, актуальные курсы из открытого API, кеш в localStorage, мгновенный пересчёт, fallback при offline.
+        </div>
+        <div class="links">
+          <a class="primary" href="task_c/src/index.html">▶ Запустить</a>
+          <a href="task_c/README.md">README</a>
+          <a href="task_c/docs/functional-req.md">ФТ</a>
+          <a href="task_c/_generator_log.md">log</a>
+        </div>
+      </article>
     </div>
 
-    <footer>
-      Все три демки сгенерированы одним и тем же генератором (Python + Gemini API).
-      Команда: <code>python -m generator --task task_X</code>
-    </footer>
+    <div class="footer">
+      Сгенерировано Cascade — пайплайн <code>БТ → UC → НФТ → ФТ → код → тесты → README</code> с self-check валидацией трассировки.
+    </div>
   </div>
 </body>
 </html>
