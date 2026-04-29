@@ -1119,7 +1119,6 @@ SLIDES = [
     ("streaming", slide_streaming),
     ("parallel", slide_parallel),
     ("refine", slide_refine),
-    ("preview", slide_preview),
     ("traceability", slide_traceability),
     ("perstep", slide_perstep),
     ("history_cost", slide_history_cost),
