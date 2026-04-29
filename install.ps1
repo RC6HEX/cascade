@@ -1,5 +1,19 @@
-# Cascade — one-line installer for Windows.
-# Usage:  powershell -ExecutionPolicy Bypass -File install.ps1
+# Cascade — one-liner installer for Windows.
+#
+# Usage:
+#   powershell -ExecutionPolicy Bypass -File install.ps1
+#   powershell -ExecutionPolicy Bypass -File install.ps1 -Run
+#   $env:OPENROUTER_API_KEY="sk-or-v1-..."; powershell -ExecutionPolicy Bypass -File install.ps1 -Run
+#
+# What it does:
+#   1. Finds Python 3.11+
+#   2. Creates .venv, installs deps
+#   3. If .env doesn't exist — prompts for OPENROUTER_API_KEY (or reads $env:OPENROUTER_API_KEY)
+#   4. With -Run: launches `python -m ui` on http://127.0.0.1:8000
+
+param(
+  [switch]$Run
+)
 
 $ErrorActionPreference = 'Stop'
 Set-Location -Path $PSScriptRoot
@@ -24,7 +38,6 @@ foreach ($cand in @('python', 'python3', 'py')) {
 }
 
 if (-not $pythonBin) {
-  # Last-resort: common install location
   $userPython = "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe"
   if (Test-Path $userPython) {
     $pythonBin = $userPython
@@ -53,12 +66,27 @@ if (-not (Test-Path $venvPy)) {
 Write-Host "→ Устанавливаю зависимости..."
 & $venvPy -m pip install --upgrade pip --quiet
 & $venvPy -m pip install -r requirements.txt --quiet
+Write-Host "✓ Зависимости установлены" -ForegroundColor Green
 
 # 4. Bootstrap .env
 if (-not (Test-Path '.env')) {
   Copy-Item '.env.example' '.env'
-  Write-Host "✓ Создан .env. Открой его и впиши OPENROUTER_API_KEY." -ForegroundColor Yellow
-  Write-Host "   Получить ключ: https://openrouter.ai/keys"
+
+  $key = $env:OPENROUTER_API_KEY
+  if (-not $key -and [Environment]::UserInteractive) {
+    Write-Host ""
+    Write-Host "Нужен OpenRouter API ключ (получить: https://openrouter.ai/keys)"
+    $key = Read-Host "Вставь ключ (или Enter — потом сам впиши в .env)"
+  }
+
+  if ($key) {
+    (Get-Content .env) -replace '^OPENROUTER_API_KEY=.*', "OPENROUTER_API_KEY=$key" |
+      Set-Content -Encoding UTF8 .env
+    Write-Host "✓ Ключ записан в .env" -ForegroundColor Green
+  } else {
+    Write-Host "⚠ .env создан, но ключ не вписан. Открой и добавь:" -ForegroundColor Yellow
+    Write-Host "    OPENROUTER_API_KEY=sk-or-v1-..."
+  }
 } else {
   Write-Host "✓ .env уже существует"
 }
@@ -66,12 +94,21 @@ if (-not (Test-Path '.env')) {
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host " Установка завершена." -ForegroundColor Green
+
+if ($Run) {
+  Write-Host " Запускаю веб-интерфейс..."
+  Write-Host "═══════════════════════════════════════════════" -ForegroundColor Cyan
+  Write-Host ""
+  & $venvPy -m ui
+  exit $LASTEXITCODE
+}
+
 Write-Host ""
 Write-Host " Запуск веб-интерфейса:"
 Write-Host "   .venv\Scripts\python.exe -m ui"
 Write-Host ""
-Write-Host " Или CLI:"
+Write-Host " Или CLI на конкретное задание:"
 Write-Host "   .venv\Scripts\python.exe -m generator --task task_a"
 Write-Host ""
-Write-Host " Открой в браузере: http://127.0.0.1:8000"
+Write-Host " UI будет на: http://127.0.0.1:8000"
 Write-Host "═══════════════════════════════════════════════" -ForegroundColor Cyan

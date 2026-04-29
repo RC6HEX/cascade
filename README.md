@@ -2,6 +2,8 @@
 
 > Автономная команда разработки ПО. На входе — бизнес-требования и бизнес-процесс. На выходе — рабочее веб-приложение, документация, тесты.
 
+[**🌐 Live demo**](https://rc6hex.github.io/cascade/) · [**📦 GitHub**](https://github.com/RC6HEX/cascade) · [**🎤 Презентация (PDF)**](presentation/cascade.pdf) · [**📖 API + FAQ**](#api-веб-сервера)
+
 ```
 БТ + БП + Features
    ↓
@@ -13,41 +15,89 @@ Use Cases  →  НФТ  →  ФТ  →  Код  →  Тесты  →  README
 
 ---
 
-## Быстрый старт (Linux/MacOs/Windows)
+## Содержание
+
+- [⚡ Установка и запуск одной командой](#-установка-и-запуск-одной-командой)
+- [Что в веб-интерфейсе](#что-в-веб-интерфейсе)
+- [Архитектура](#архитектура)
+- [Использование без UI (CLI)](#использование-без-ui-cli)
+- [Поддерживаемые модели через OpenRouter](#поддерживаемые-модели-через-openrouter)
+- [Структура артефактов на выходе](#структура-артефактов-на-выходе)
+- [Структура проекта](#структура-проекта)
+- [Тесты генератора](#тесты-генератора)
+- [API веб-сервера](#api-веб-сервера)
+- [Альтернативный провайдер: Gemini напрямую](#альтернативный-провайдер-gemini-напрямую)
+- [Troubleshooting](#troubleshooting)
+- [FAQ](#faq)
+- [Roadmap](#roadmap)
+
+---
+
+## ⚡ Установка и запуск одной командой
+
+Получи OpenRouter ключ заранее: <https://openrouter.ai/keys> (free-tier хватит для отладки).
+
+### 🐧 Linux
+
+```bash
+git clone https://github.com/RC6HEX/cascade.git && cd cascade && bash install.sh --run
+```
+
+Скрипт спросит ключ во время установки и сразу запустит веб-интерфейс на <http://127.0.0.1:8000>.
+
+### 🍎 macOS
+
+```bash
+git clone https://github.com/RC6HEX/cascade.git && cd cascade && bash install.sh --run
+```
+
+Та же команда что и на Linux. Если bash блокируется политиками — используй `zsh install.sh --run`.
+
+### 🪟 Windows (PowerShell)
+
+```powershell
+git clone https://github.com/RC6HEX/cascade.git; cd cascade; powershell -ExecutionPolicy Bypass -File install.ps1 -Run
+```
+
+### 🐳 Без интерактивного ввода (для CI / Docker)
+
+Передай ключ переменной окружения, скрипт впишет в `.env` сам:
+
+```bash
+# Linux / macOS
+OPENROUTER_API_KEY="sk-or-v1-..." git clone https://github.com/RC6HEX/cascade.git && cd cascade && OPENROUTER_API_KEY="sk-or-v1-..." bash install.sh --run
+
+# Windows PowerShell
+$env:OPENROUTER_API_KEY="sk-or-v1-..."; git clone https://github.com/RC6HEX/cascade.git; cd cascade; powershell -ExecutionPolicy Bypass -File install.ps1 -Run
+```
+
+### Что делает install.sh / install.ps1
+
+1. Находит Python 3.11+ (или подсказывает где скачать)
+2. Создаёт `.venv` рядом с проектом
+3. Ставит deps из `requirements.txt`
+4. Если нет `.env` — спрашивает OpenRouter ключ и записывает
+5. С флагом `--run` (`-Run` для PS) — запускает `python -m ui` сразу
+
+### Установка без скрипта (если хочется руками)
 
 ```bash
 git clone https://github.com/RC6HEX/cascade.git
 cd cascade
-bash install.sh           # на Windows: powershell -ExecutionPolicy Bypass -File install.ps1
-```
+python -m venv .venv
 
-Затем открой `.env` и впиши свой ключ от OpenRouter:
-
-```ini
-OPENROUTER_API_KEY=sk-or-v1-...
-```
-
-Получить ключ: <https://openrouter.ai/keys> (есть free-tier).
-
-И запусти веб-интерфейс:
-
-```bash
-# Linux / macOS
+# Linux / macOS:
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env  # затем впиши OPENROUTER_API_KEY
 .venv/bin/python -m ui
 
-# Windows
+# Windows:
+.venv\Scripts\pip install -r requirements.txt
+copy .env.example .env  # затем впиши OPENROUTER_API_KEY
 .venv\Scripts\python.exe -m ui
 ```
 
-Открой в браузере: <http://127.0.0.1:8000>
-
-> **Альтернатива без скрипта-установщика** (если bash/ps1 не подходит):
-> ```bash
-> python -m venv .venv
-> .venv/bin/pip install -r requirements.txt   # Windows: .venv\Scripts\pip
-> cp .env.example .env                         # затем впиши OPENROUTER_API_KEY
-> .venv/bin/python -m ui
-> ```
+После запуска UI откроется на <http://127.0.0.1:8000>.
 
 ---
 
