@@ -359,8 +359,8 @@ class LLMClient:
         headers = {
             "Authorization": f"Bearer {self.cfg.openrouter_api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/autonomous-team",
-            "X-Title": "Autonomous Code Generator",
+            "HTTP-Referer": "https://github.com/RC6HEX/cascade",
+            "X-Title": "Cascade",
         }
         payload = {
             "model": slug,
@@ -375,6 +375,15 @@ class LLMClient:
         if r.status_code != 200:
             raise RuntimeError(f"OpenRouter HTTP {r.status_code}: {r.text[:500]}")
         data = r.json()
+        # OpenRouter sometimes wraps a provider error inside a 200 response —
+        # surface it as a clean error so retry / backoff logic can react.
+        if data.get("error"):
+            err = data["error"]
+            msg = err.get("message", "unknown")
+            code = err.get("code", "?")
+            # Map provider 400 to HTTP 400 in our error string so retry uses
+            # the right backoff (5xx-tier rather than network-tier).
+            raise RuntimeError(f"OpenRouter HTTP {code} (wrapped): {msg}")
         choice = (data.get("choices") or [{}])[0]
         text = choice.get("message", {}).get("content", "") or ""
         if not text:

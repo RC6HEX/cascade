@@ -209,18 +209,46 @@ def page_header(c: canvas.Canvas, title: str, subtitle: str | None = None) -> No
 def slide_title(c: canvas.Canvas) -> None:
     """Slide 1 — title."""
     fill_bg(c)
-    # Bigger logo center-left
-    cascade_logo(c, W / 2, H / 2 + 1.0 * inch, size=80)
+    # Bigger logo center-top
+    cascade_logo(c, W / 2, H / 2 + 1.4 * inch, size=80)
 
     # CASCADE big title
     c.setFont(FONT_BOLD, 96)
     c.setFillColor(FG)
-    c.drawCentredString(W / 2, H / 2 - 0.4 * inch, "Cascade")
+    c.drawCentredString(W / 2, H / 2 - 0.0 * inch, "Cascade")
 
-    # Tagline gradient
+    # Tagline
     c.setFont(FONT_REG, 22)
     c.setFillColor(FG_2)
-    c.drawCentredString(W / 2, H / 2 - 1.1 * inch, "автономная команда разработки ПО")
+    c.drawCentredString(W / 2, H / 2 - 0.7 * inch, "автономная команда разработки ПО")
+    c.setFont(FONT_MONO, 13)
+    c.setFillColor(MUTED)
+    c.drawCentredString(W / 2, H / 2 - 1.1 * inch,
+                        "БТ → UC → НФТ → ФТ → код → тесты → README")
+
+    # Metric badges row — proves it works
+    badges = [
+        ("100%", "БТ → ФТ", ACCENT),
+        ("12", "файлов", ACCENT_2),
+        ("$0.02", "/прогон", ACCENT_3),
+        ("3.4 мин", "end-to-end", WARN),
+    ]
+    bw = 1.6 * inch
+    bh = 0.7 * inch
+    total_w = len(badges) * bw + (len(badges) - 1) * 0.2 * inch
+    bx_start = (W - total_w) / 2
+    by = H / 2 - 2.4 * inch
+    for i, (val, lbl, col) in enumerate(badges):
+        x = bx_start + i * (bw + 0.2 * inch)
+        c.setFillColor(BG_2)
+        c.setStrokeColor(col)
+        c.setLineWidth(1.2)
+        c.roundRect(x, by, bw, bh, 8, stroke=1, fill=1)
+        text(c, x + bw / 2, by + 0.42 * inch, val,
+             size=18, color=col, font=FONT_BOLD, align="center")
+        text(c, x + bw / 2, by + 0.15 * inch, lbl,
+             size=10, color=FG_2, align="center")
+    c.setLineWidth(1.0)
 
     # Bottom links bar
     c.setFont(FONT_MONO, 13)
@@ -517,18 +545,17 @@ def slide_selfcheck(c: canvas.Canvas) -> None:
     text(c, 2.9 * inch, 3.6 * inch, "обязательных БТ", size=14, color=FG_2, align="center")
     text(c, 2.9 * inch, 3.3 * inch, "покрыто ФТ", size=14, color=FG_2, align="center")
     text(c, 2.9 * inch, 2.4 * inch, "после ретраев", size=11, color=MUTED, align="center")
-    text(c, 2.9 * inch, 2.05 * inch, "(в среднем — 1 ретрай на code-step)", size=10,
+    text(c, 2.9 * inch, 2.05 * inch, "(в среднем — 1 ретрай на FR-step)", size=10,
          color=MUTED, align="center")
 
-    # Steps right
+    # Steps right + concrete real-run example
     rx = 5.5 * inch
     text(c, rx, 5.0 * inch, "Как работает", size=12, color=MUTED, font=FONT_BOLD)
     steps = [
         ("1", "Шаг сгенерирован", FG),
         ("2", "Validator парсит ID:\nБТ → ФТ → @implements", FG_2),
         ("3", "Не покрыто? — feedback модели", FG_2),
-        ("4", "Шаг переделывается с фидбеком", FG_2),
-        ("5", "До 2 ретраев → продолжаем", ACCENT_3),
+        ("4", "Шаг переделывается, до 2 ретраев", ACCENT_3),
     ]
     yy = 4.5 * inch
     for num, txt, col in steps:
@@ -539,7 +566,21 @@ def slide_selfcheck(c: canvas.Canvas) -> None:
         for li, ln in enumerate(txt.split("\n")):
             text(c, rx + 0.55 * inch, yy + 0.05 * inch - li * 0.25 * inch,
                  ln, size=12, color=col)
-        yy -= 0.75 * inch
+        yy -= 0.6 * inch
+
+    # Concrete example from real run
+    ex_y = 1.5 * inch
+    card(c, rx, ex_y, W - rx - 0.65 * inch, 1.0 * inch, fill=BG_2, border=WARN)
+    c.setFillColor(WARN)
+    c.rect(rx, ex_y + 1.0 * inch - 0.04 * inch, W - rx - 0.65 * inch, 0.04 * inch,
+           stroke=0, fill=1)
+    text(c, rx + 0.2 * inch, ex_y + 0.7 * inch, "ПРИМЕР ИЗ РЕАЛЬНОГО ПРОГОНА",
+         size=9, color=WARN, font=FONT_BOLD)
+    text(c, rx + 0.2 * inch, ex_y + 0.4 * inch,
+         "FR-step: «missing БТ-05 в источниках»", size=11, color=FG, font=FONT_MONO)
+    text(c, rx + 0.2 * inch, ex_y + 0.15 * inch,
+         "→ retry 1 → ✓ ФТ-04 теперь ссылается на БТ-05",
+         size=11, color=ACCENT_3, font=FONT_MONO)
 
 
 def slide_streaming(c: canvas.Canvas) -> None:
@@ -710,13 +751,13 @@ def slide_traceability(c: canvas.Canvas) -> None:
     page_header(c, "Traceability matrix",
                  "БТ -> UC -> ФТ -> @implements в одной картинке")
 
-    # 5 stat cards — top edge ≤ CONTENT_TOP
+    # 5 stat cards — REAL data from job 7709e2dcca16
     stats = [
         ("5", "БТ всего", FG),
         ("4", "обязательных", ACCENT),
         ("4", "юз-кейсов", ACCENT_2),
-        ("8", "ФТ", ACCENT_3),
-        ("63%", "ФТ → @implements", WARN),
+        ("7", "ФТ", ACCENT_3),
+        ("100%", "ФТ → @implements", ACCENT_3),
     ]
     sw = (W - 1.3 * inch - 0.8 * inch) / 5
     sh = 1.4 * inch
@@ -729,17 +770,18 @@ def slide_traceability(c: canvas.Canvas) -> None:
         text(c, x + sw / 2, yy + 0.35 * inch, lbl, size=10, color=FG_2, align="center",
              font=FONT_BOLD)
 
-    # Matrix preview — header above, rows below
+    # Matrix preview — REAL traceability from output of latest run
     rx = 0.65 * inch
     rw = W - 1.3 * inch
-    text(c, rx, 3.3 * inch, "матрица в UI:", size=11, color=MUTED, font=FONT_BOLD)
+    text(c, rx, 3.3 * inch, "матрица в UI · реальные данные из последнего прогона:",
+         size=11, color=MUTED, font=FONT_BOLD)
 
     rows = [
-        ("БТ-01", "обяз.", "UC-01", "ФТ-01, ФТ-02"),
-        ("БТ-02", "обяз.", "UC-02", "ФТ-03"),
-        ("БТ-03", "обяз.", "—", "ФТ-04"),
-        ("БТ-04", "обяз.", "UC-01a", "ФТ-05"),
-        ("БТ-05", "опц.", "—", "—"),
+        ("БТ-01", "обяз.", "UC-01", "ФТ-01"),
+        ("БТ-02", "опц.", "UC-02", "ФТ-05, ФТ-06"),
+        ("БТ-03", "обяз.", "UC-02", "ФТ-03, ФТ-04"),
+        ("БТ-04", "обяз.", "UC-01", "ФТ-02"),
+        ("БТ-05", "обяз.", "UC-03", "ФТ-07"),
     ]
     rh = 0.32 * inch
     table_top = 2.95 * inch
@@ -755,9 +797,9 @@ def slide_traceability(c: canvas.Canvas) -> None:
     yy_first_row = yy_h - 0.45 * inch
     for i, (bt, req, uc, frs) in enumerate(rows):
         cy = yy_first_row - i * rh
-        # Optional warning highlight for empty rows — kept inside table column area
-        if uc == "—" and frs == "—":
-            c.setFillColor(Color(WARN.red, WARN.green, WARN.blue, alpha=0.06))
+        # Subtle stripe for readability
+        if i % 2 == 0:
+            c.setFillColor(Color(BG_2.red, BG_2.green, BG_2.blue, alpha=0.5))
             c.rect(rx, cy - 0.07 * inch, rw, rh, stroke=0, fill=1)
         text(c, rx + 0.1 * inch, cy + 0.05 * inch, bt, size=11, color=ACCENT_2,
              font=FONT_MONO)
@@ -889,49 +931,73 @@ def slide_tests(c: canvas.Canvas) -> None:
 def slide_demo_a(c: canvas.Canvas) -> None:
     fill_bg(c)
     page_header(c, "Демо A — Веб-калькулятор",
-                 "QuickCalc — простое задание, полный пайплайн")
+                 "QuickCalc · реальный прогон через UI · 26 апр 2026")
 
-    # Stats row (positioned below subtitle with safe margin)
+    # Stats row — real numbers from job 7709e2dcca16
     stats = [
         ("5", "БТ", "(4 обяз.)"),
         ("4", "юз-кейса", ""),
-        ("8", "ФТ", "7/8 покрыто"),
-        ("11", "файлов", "code + docs + tests"),
-        ("$0.05", "стоимость", "1 прогон"),
-        ("10мин", "время", "с self-check"),
+        ("7", "ФТ", "100% покрыто"),
+        ("12", "файлов", "code + docs + tests"),
+        ("$0.02", "стоимость", "27K токенов"),
+        ("3.4 мин", "время", "с self-check"),
     ]
     sw = (W - 1.3 * inch - 1.0 * inch) / 6
     by = 3.7 * inch
     for i, (n, lbl, sub) in enumerate(stats):
         x = 0.65 * inch + (sw + 0.2 * inch) * i
-        card(c, x, by, sw, 1.5 * inch)
-        text(c, x + sw / 2, by + 1.0 * inch, n, size=22, color=ACCENT, font=FONT_BOLD,
+        is_highlight = "100%" in sub
+        if is_highlight:
+            card(c, x, by, sw, 1.5 * inch, border=ACCENT_3)
+        else:
+            card(c, x, by, sw, 1.5 * inch)
+        col = ACCENT_3 if is_highlight else ACCENT
+        text(c, x + sw / 2, by + 1.0 * inch, n, size=22, color=col, font=FONT_BOLD,
              align="center")
         text(c, x + sw / 2, by + 0.6 * inch, lbl, size=10, color=FG_2, align="center",
              font=FONT_BOLD)
         if sub:
             text(c, x + sw / 2, by + 0.3 * inch, sub, size=8, color=MUTED, align="center")
 
-    # Files preview
+    # Two-column: files left, self-check timeline right
     text(c, 0.65 * inch, 3.2 * inch, "СГЕНЕРИРОВАННЫЕ ФАЙЛЫ", size=10, color=MUTED,
          font=FONT_BOLD)
 
     files = [
-        ("src/index.html", "Точка входа, минимальная разметка"),
-        ("src/app.js", "Bootstrap, обработчики кликов"),
-        ("src/calculator.js", "Calculator class, 7 @implements"),
-        ("src/keyboard.js", "Поддержка клавиатуры"),
-        ("src/styles.css", "Тёмная тема, оранжевый акцент"),
-        ("docs/use-cases.md", "UC-01, UC-02, UC-03"),
-        ("docs/functional-req.md", "8 ФТ со ссылками на БТ и UC"),
-        ("README.md", "Инструкция: open src/index.html"),
+        ("src/index.html", "1.7 KB · точка входа"),
+        ("src/app.js", "1.2 KB · bootstrap"),
+        ("src/calculator.js", "5.8 KB · 14 @implements"),
+        ("src/keyboard.js", "1.4 KB · 1 @implements"),
+        ("src/styles.css", "3.9 KB · тёмная тема"),
+        ("tests/calculator.test.js", "7.3 KB · 18 it()"),
+        ("tests/keyboard.test.js", "2.1 KB · 4 it()"),
     ]
     yy = 2.85 * inch
     for path, desc in files:
         c.setFillColor(ACCENT)
         c.circle(0.85 * inch, yy + 0.07 * inch, 0.04 * inch, stroke=0, fill=1)
         text(c, 1.0 * inch, yy + 0.04 * inch, path, size=11, color=ACCENT_2, font=FONT_MONO)
-        text(c, 4.3 * inch, yy + 0.04 * inch, desc, size=11, color=FG_2)
+        text(c, 4.0 * inch, yy + 0.04 * inch, desc, size=11, color=FG_2)
+        yy -= 0.3 * inch
+
+    # Right column — pipeline timeline with REAL durations
+    rx = 7.5 * inch
+    text(c, rx, 3.2 * inch, "ХРОНОМЕТРАЖ", size=10, color=MUTED, font=FONT_BOLD)
+    timeline = [
+        ("use_cases", "31.9s", ACCENT_3, "OK · first try"),
+        ("nfr", "22.4s", ACCENT_3, "OK · first try"),
+        ("fr", "100.9s", WARN, "retry 1 — нашёл missing БТ-05"),
+        ("code", "~60s", ACCENT_3, "OK · 14 @implements"),
+        ("tests", "~50s", ACCENT_3, "OK · Vitest + happy-dom"),
+        ("readme", "~15s", ACCENT_3, "OK"),
+    ]
+    yy = 2.85 * inch
+    for step, dur, col, status in timeline:
+        c.setFillColor(col)
+        c.circle(rx + 0.1 * inch, yy + 0.07 * inch, 0.05 * inch, stroke=0, fill=1)
+        text(c, rx + 0.3 * inch, yy + 0.04 * inch, step, size=11, color=FG, font=FONT_MONO)
+        text(c, rx + 1.5 * inch, yy + 0.04 * inch, dur, size=11, color=col, font=FONT_BOLD)
+        text(c, rx + 2.4 * inch, yy + 0.04 * inch, status, size=10, color=FG_2)
         yy -= 0.3 * inch
 
 
@@ -983,22 +1049,24 @@ def slide_demo_bc(c: canvas.Canvas) -> None:
 
 def slide_summary(c: canvas.Canvas) -> None:
     fill_bg(c)
-    page_header(c, "Итоги", "что в репозитории")
+    page_header(c, "Итоги", "что мы построили — в цифрах")
 
-    # Big numbers row (placed below title with safe margin)
+    # Big numbers row — colored variety, real metrics
     stats = [
-        ("4", "волны разработки"),
-        ("21", "API endpoint"),
-        ("12", "моделей"),
-        ("23", "unit-теста"),
-        ("3", "пресета задач"),
+        ("4", "волны разработки", ACCENT),
+        ("23", "API endpoint", ACCENT_2),
+        ("12", "LLM моделей", ACCENT_3),
+        ("23 / 23", "unit-теста pass", ACCENT_3),
+        ("100%", "БТ → ФТ покрытие", WARN),
     ]
     sw = (W - 1.3 * inch - 0.8 * inch) / 5
     yy = 3.5 * inch
-    for i, (n, lbl) in enumerate(stats):
+    for i, (n, lbl, col) in enumerate(stats):
         x = 0.65 * inch + (sw + 0.2 * inch) * i
-        card(c, x, yy, sw, 1.6 * inch, border=ACCENT)
-        text(c, x + sw / 2, yy + 1.05 * inch, n, size=38, color=ACCENT, font=FONT_BOLD,
+        card(c, x, yy, sw, 1.6 * inch, border=col)
+        # Adjust font size for narrow display strings like "23 / 23"
+        font_size = 30 if "/" in n else 38
+        text(c, x + sw / 2, yy + 1.05 * inch, n, size=font_size, color=col, font=FONT_BOLD,
              align="center")
         text(c, x + sw / 2, yy + 0.45 * inch, lbl, size=10, color=FG_2, align="center",
              font=FONT_BOLD)

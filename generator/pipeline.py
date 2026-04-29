@@ -446,9 +446,10 @@ def run_pipeline(
         return result
 
     with LLMClient(cfg) as client:
-        # 1+2. Use cases & NFR in parallel — both depend only on input.
-        # We still emit step_start/step_done in pipeline order so the UI shows
-        # them sequentially even though they run concurrently underneath.
+        # 1+2. Use cases & NFR — parallel only if they use DIFFERENT models.
+        # When both run on the same model (e.g. default qwen-2.5-72b on free tier),
+        # the underlying provider often returns HTTP 400 "Provider returned error"
+        # on concurrent requests. Detect and serialize in that case.
         use_cases = ""
         nfr = ""
 
@@ -470,41 +471,58 @@ def run_pipeline(
             emit("step_done", step="nfr", chars=len(nfr),
                  path="docs/non-functional-req.md")
         else:
-            # Mark both as starting up front so the UI shows the parallelism
-            step_index += 1
-            emit("step_start", step="use_cases", index=step_index, total=total_steps)
-            step_index += 1
-            emit("step_start", step="nfr", index=step_index, total=total_steps)
-            log.info("[%d/%d] Generating use_cases + nfr (parallel) ...",
-                     step_index, total_steps)
+            uc_model = _resolve_model(client.cfg, "use_cases", model_overrides)
+            nfr_model = _resolve_model(client.cfg, "nfr", model_overrides)
+            same_model = uc_model == nfr_model
 
-            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="cascade-doc") as pool:
-                fut_uc = pool.submit(_do_use_cases)
-                fut_nfr = pool.submit(_do_nfr)
-                # Wait for both. Whichever finishes first emits step_done first.
-                results: dict[str, tuple[Any, Optional[Exception]]] = {}
-                from concurrent.futures import as_completed
-                fut_to_name = {fut_uc: "use_cases", fut_nfr: "nfr"}
-                for fut in as_completed(fut_to_name):
-                    name = fut_to_name[fut]
-                    try:
-                        results[name] = (fut.result(), None)
-                    except Exception as e:
-                        results[name] = (None, e)
+            if same_model:
+                # Sequential — avoids provider-side concurrent-request errors
+                begin("use_cases")
+                use_cases = _do_use_cases()
+                write_text(output_dir / "docs" / "use-cases.md", use_cases)
+                emit("step_done", step="use_cases", chars=len(use_cases),
+                     path="docs/use-cases.md")
 
-            # Re-raise the first error if any
-            for name, (_, err) in results.items():
-                if err:
-                    raise err
+                begin("nfr")
+                nfr = _do_nfr()
+                write_text(output_dir / "docs" / "non-functional-req.md", nfr)
+                emit("step_done", step="nfr", chars=len(nfr),
+                     path="docs/non-functional-req.md")
+            else:
+                # Different models → safe to run in parallel
+                step_index += 1
+                emit("step_start", step="use_cases", index=step_index, total=total_steps)
+                step_index += 1
+                emit("step_start", step="nfr", index=step_index, total=total_steps)
+                log.info("[%d/%d] Generating use_cases + nfr (parallel, different models) ...",
+                         step_index, total_steps)
 
-            use_cases, _ = results["use_cases"]
-            nfr, _ = results["nfr"]
-            write_text(output_dir / "docs" / "use-cases.md", use_cases)
-            emit("step_done", step="use_cases", chars=len(use_cases),
-                 path="docs/use-cases.md")
-            write_text(output_dir / "docs" / "non-functional-req.md", nfr)
-            emit("step_done", step="nfr", chars=len(nfr),
-                 path="docs/non-functional-req.md")
+                with ThreadPoolExecutor(max_workers=2, thread_name_prefix="cascade-doc") as pool:
+                    fut_uc = pool.submit(_do_use_cases)
+                    fut_nfr = pool.submit(_do_nfr)
+                    results: dict[str, tuple[Any, Optional[Exception]]] = {}
+                    from concurrent.futures import as_completed
+                    fut_to_name = {fut_uc: "use_cases", fut_nfr: "nfr"}
+                    for fut in as_completed(fut_to_name):
+                        name = fut_to_name[fut]
+                        try:
+                            results[name] = (fut.result(), None)
+                        except Exception as e:
+                            results[name] = (None, e)
+
+                # Re-raise the first error if any
+                for name, (_, err) in results.items():
+                    if err:
+                        raise err
+
+                use_cases, _ = results["use_cases"]
+                nfr, _ = results["nfr"]
+                write_text(output_dir / "docs" / "use-cases.md", use_cases)
+                emit("step_done", step="use_cases", chars=len(use_cases),
+                     path="docs/use-cases.md")
+                write_text(output_dir / "docs" / "non-functional-req.md", nfr)
+                emit("step_done", step="nfr", chars=len(nfr),
+                     path="docs/non-functional-req.md")
 
         # 3. FR (with traceability check: every required БТ must be referenced)
         begin("fr")
